@@ -387,6 +387,19 @@ def simplify_message(message: str) -> str:
     return cleaned[:140]
 
 
+def initial_commit_replacement(repo: Optional[str], technical: bool) -> str:
+    module_hint = repo.replace("-", "/") if repo else "the project"
+    if technical:
+        return f"Established the foundation for {module_hint}"
+    return "Launched the first architectural draft"
+
+
+def sanitize_initial_commit(text: str, repo: Optional[str], technical: bool) -> str:
+    if "initial commit" in text.lower():
+        return initial_commit_replacement(repo, technical)
+    return text
+
+
 def sentence_case(text: str) -> str:
     if not text:
         return text
@@ -477,6 +490,15 @@ def extract_public_deliverables(commits: List[Dict[str, Any]], limit: int) -> Li
         msg = commit.get("message", "")
         if not msg:
             continue
+        msg = sanitize_initial_commit(msg, commit.get("repo"), technical=False)
+        if msg.lower().startswith("launched the first architectural draft"):
+            key = msg.lower()
+            if key not in seen:
+                seen.add(key)
+                deliverables.append(msg)
+            if len(deliverables) >= limit:
+                break
+            continue
         cleaned = normalize_public_deliverable(msg)
         if not is_public_deliverable(cleaned):
             continue
@@ -566,6 +588,15 @@ def extract_public_pr_deliverables(prs: List[Dict[str, Any]], limit: int) -> Lis
         title = pr.get("title", "")
         if not title:
             continue
+        title = sanitize_initial_commit(title, pr.get("repo"), technical=False)
+        if title.lower().startswith("launched the first architectural draft"):
+            key = title.lower()
+            if key not in seen:
+                seen.add(key)
+                deliverables.append(title)
+            if len(deliverables) >= limit:
+                break
+            continue
         cleaned = publicize_deliverable(title)
         if not is_public_deliverable(cleaned):
             continue
@@ -585,6 +616,15 @@ def extract_public_commit_deliverables(commits: List[Dict[str, Any]], limit: int
     for commit in commits:
         msg = commit.get("message", "")
         if not msg:
+            continue
+        msg = sanitize_initial_commit(msg, commit.get("repo"), technical=False)
+        if msg.lower().startswith("launched the first architectural draft"):
+            key = msg.lower()
+            if key not in seen:
+                seen.add(key)
+                deliverables.append(msg)
+            if len(deliverables) >= limit:
+                break
             continue
         cleaned = publicize_deliverable(msg)
         if not is_public_deliverable(cleaned):
@@ -623,12 +663,7 @@ def extract_technical_deliverables(commits: List[Dict[str, Any]], limit: int) ->
         module_hint = repo.replace("-", "/") if repo else "module"
         lower_msg = msg.strip().lower()
         if "initial commit" in lower_msg:
-            stripped = re.sub(r"(?i)\binitial commit\b[:\-\s]*", "", msg)
-            stripped = re.sub(r"\s+", " ", stripped).strip(" -:")
-            if stripped:
-                cleaned = f"{sentence_case(stripped)} in {module_hint}"
-            else:
-                cleaned = f"Established the foundation for {module_hint}"
+            cleaned = initial_commit_replacement(repo, technical=True)
         elif re.fullmatch(r"(fix|fixed)", lower_msg):
             cleaned = f"Fixed stability issues in {module_hint}"
         elif re.fullmatch(r"(update|updated)", lower_msg):
@@ -654,7 +689,9 @@ def extract_technical_deliverables(commits: List[Dict[str, Any]], limit: int) ->
 def build_raw_data_input(
     summaries: Dict[str, Dict[str, Any]],
     individual_summaries: Dict[str, Dict[str, Any]],
+    report_type: str,
 ) -> str:
+    technical = report_type == "technical"
     lines: List[str] = []
     for project_key in ["Ooo", "Eco", "TRH"]:
         summary = summaries.get(project_key)
@@ -665,14 +702,14 @@ def build_raw_data_input(
         lines.append("Top commits:")
         for commit in summary.get("top_commits", [])[:15]:
             repo = commit.get("repo", "")
-            msg = commit.get("message", "")
+            msg = sanitize_initial_commit(commit.get("message", ""), repo, technical)
             sha = commit.get("sha", "")
             lines.append(f"- [{repo}] {msg} (sha: {sha})")
         lines.append("Merged PRs:")
         for pr in summary.get("merged_pr_list", [])[:10]:
             repo = pr.get("repo", "")
             number = pr.get("pr_number", "")
-            title = pr.get("title", "")
+            title = sanitize_initial_commit(pr.get("title", ""), repo, technical)
             lines.append(f"- [{repo}] PR#{number}: {title}")
         lines.append("")
 
@@ -682,7 +719,11 @@ def build_raw_data_input(
             label = payload.get("label", "")
             summary = payload.get("summary", {})
             commits = summary.get("top_commits", [])[:3]
-            commit_snippets = "; ".join(c.get("message", "") for c in commits if c.get("message"))
+            commit_snippets = "; ".join(
+                sanitize_initial_commit(c.get("message", ""), c.get("repo"), technical)
+                for c in commits
+                if c.get("message")
+            )
             lines.append(f"- {label}: {commit_snippets}")
 
     return "\n".join(lines).strip()
@@ -703,7 +744,7 @@ def generate_full_report_with_ai(
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     start = date_range.get("start") or "N/A"
     end = date_range.get("end") or "N/A"
-    raw_data = build_raw_data_input(summaries, individual_summaries)
+    raw_data = build_raw_data_input(summaries, individual_summaries, report_type)
 
     if report_type == "technical":
         prompt = f"""[Role]
@@ -866,12 +907,12 @@ def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
-        f"- [{c['repo']}] {c['message']} (sha: {c['sha']})"
+        f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), True)} (sha: {c['sha']})"
         for c in summary['top_commits'][:20]
     ])
 
     pr_list = "\n".join([
-        f"- [{p['repo']}] PR#{p['pr_number']}: {p['title']}"
+        f"- [{p['repo']}] PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), True)}"
         for p in summary['merged_pr_list'][:10]
     ])
 
@@ -925,7 +966,7 @@ def generate_with_ai_public(project: str, summary: dict, info: dict) -> str:
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
-        f"- [{c['repo']}] {c['message']}"
+        f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), False)}"
         for c in summary['top_commits'][:20]
     ])
 
@@ -1021,13 +1062,14 @@ def generate_with_ai_individual(member_label: str, summary: dict, info: dict, re
         return generate_basic_individual(member_label, summary, info, report_type)
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
+    technical = report_type == "technical"
     commit_list = "\n".join([
-        f"- [{c['repo']}] {c['message']} (sha: {c['sha']})"
+        f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), technical)} (sha: {c['sha']})"
         for c in summary['top_commits'][:20]
     ])
 
     pr_list = "\n".join([
-        f"- [{p['repo']}] PR#{p['pr_number']}: {p['title']}"
+        f"- [{p['repo']}] PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), technical)}"
         for p in summary['merged_pr_list'][:10]
     ])
 
@@ -1083,15 +1125,7 @@ def generate_basic_individual(member_label: str, summary: dict, info: dict, repo
     def rewrite_initial_commit(text: str) -> str:
         lowered = text.strip().lower()
         if "initial commit" in lowered:
-            stripped = re.sub(r"(?i)\binitial commit\b[:\-\s]*", "", text)
-            stripped = re.sub(r"\s+", " ", stripped).strip(" -:")
-            if stripped:
-                return stripped
-            module_hint = "the project"
-            match = re.search(r"\bin ([a-z0-9]+(?:/[a-z0-9]+)+)\b", lowered)
-            if match:
-                module_hint = match.group(1)
-            return f"Established the foundation for {module_hint}"
+            return initial_commit_replacement(None, technical=report_type == "technical")
         return text
 
     if report_type == "public":
