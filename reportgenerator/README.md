@@ -118,3 +118,20 @@ npm run dev
 | 변수명 | 설명 | 필수 |
 |--------|------|------|
 | ANTHROPIC_API_KEY | Claude API 키 | AI 기능 사용 시 필수 |
+
+## How to run
+
+### Frontend
+cd frontend
+npm install
+npm run dev
+
+### Backend
+cd backend
+# (fill in based on backend type)
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+
