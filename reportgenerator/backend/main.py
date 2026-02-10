@@ -10,12 +10,14 @@ import io
 import os
 import re
 from collections import defaultdict
-from typing import Optional
+from typing import Optional, Tuple, List, Dict, Set, Any, TypedDict
+from datetime import datetime
 
 try:
-    import anthropic
+    import anthropic  # type: ignore
     HAS_ANTHROPIC = True
 except ImportError:
+    anthropic = None  # type: ignore
     HAS_ANTHROPIC = False
 
 app = FastAPI(title="Biweekly Report Generator API")
@@ -87,6 +89,18 @@ SECTION_INFO_PUBLIC = {
     },
 }
 
+SECTION_INFO_INDIVIDUAL_TECHNICAL = {
+    "number": "2.5",
+    "title": "Individual Contributions",
+    "context": "Individual project work outside the three core initiatives.",
+}
+
+SECTION_INFO_INDIVIDUAL_PUBLIC = {
+    "number": "2.5",
+    "title": "Individual Contributions",
+    "context": "Individual project progress that complements the main initiatives.",
+}
+
 
 def get_project_for_repo(repo_name: str) -> Optional[str]:
     for project, repos in PROJECT_REPOS.items():
@@ -95,9 +109,38 @@ def get_project_for_repo(repo_name: str) -> Optional[str]:
     return None
 
 
+def parse_timestamp(timestamp: str) -> Optional[datetime]:
+    if not timestamp:
+        return None
+    try:
+        return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def normalize_member_identity(member_name: str, member_email: str) -> Tuple[str, str]:
+    name = (member_name or "").strip('"').strip()
+    email = (member_email or "").strip('"').strip()
+    email_local = email.split("@")[0] if "@" in email else ""
+
+    use_name = bool(name) and name.isascii() and re.search(r"[A-Za-z]", name)
+    label = name if use_name else (email_local or name)
+    member_id = (email_local or label).lower().replace(" ", "-")
+    return member_id, label
+
+
+class ActivityGroup(TypedDict):
+    commits: List[Dict[str, Any]]
+    prs: List[Dict[str, Any]]
+    repos: Set[str]
+
+
 def parse_csv_content(content: str) -> dict:
-    """Parse CSV content and return GitHub activities grouped by project."""
-    project_data = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
+    """Parse CSV content and return GitHub activities grouped by project and member."""
+    project_data: defaultdict[str, ActivityGroup] = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
+    individual_data: defaultdict[str, ActivityGroup] = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
+    members: Dict[str, Dict[str, str]] = {}
+    timestamps: List[datetime] = []
 
     reader = csv.DictReader(io.StringIO(content))
     for row in reader:
@@ -108,52 +151,202 @@ def parse_csv_content(content: str) -> dict:
         if not repo:
             continue
 
+        timestamp = row.get('timestamp', '')
+        parsed_time = parse_timestamp(timestamp)
+        if parsed_time:
+            timestamps.append(parsed_time)
+
+        member_name = row.get('member_name', '').strip('"')
+        member_email = row.get('member_email', '').strip('"')
+        member_id, member_label = normalize_member_identity(member_name, member_email)
+        if member_id and member_id not in members:
+            members[member_id] = {
+                "id": member_id,
+                "label": member_label,
+                "name": member_name,
+                "email": member_email,
+            }
+
         project = get_project_for_repo(repo)
-        if not project:
-            continue
 
         entry_type = row.get('type', '')
         message = row.get('message', '').strip('"')
         title = row.get('title', '').strip('"')
         sha = row.get('sha', '').strip('"')
         pr_number = row.get('pr_number', '').strip('"')
-        timestamp = row.get('timestamp', '')
         additions = row.get('additions', '0') or '0'
         deletions = row.get('deletions', '0') or '0'
         state = row.get('state', '').strip('"')
 
-        project_data[project]["repos"].add(repo)
+        if project:
+            target = project_data[project]
+        else:
+            if not member_id:
+                continue
+            target = individual_data[member_id]
+
+        target["repos"].add(repo)
 
         if entry_type == 'commit' and message:
             if message.lower().startswith('merge '):
                 continue
-            project_data[project]["commits"].append({
+            target["commits"].append({
                 "repo": repo,
                 "message": message.split('\n')[0][:200],
                 "sha": sha[:8] if sha else "",
                 "timestamp": timestamp,
                 "additions": int(additions),
                 "deletions": int(deletions),
+                "member_id": member_id,
             })
         elif entry_type == 'pull_request' and title:
-            project_data[project]["prs"].append({
+            target["prs"].append({
                 "repo": repo,
                 "title": title,
                 "pr_number": pr_number,
                 "state": state,
                 "timestamp": timestamp,
+                "member_id": member_id,
             })
 
-    # Convert sets to lists for JSON serialization
-    result = {}
-    for project, data in project_data.items():
-        result[project] = {
-            "commits": data["commits"],
-            "prs": data["prs"],
-            "repos": list(data["repos"]),
-        }
+    def serialize_group(data_map: Dict[str, ActivityGroup]) -> Dict[str, Dict[str, Any]]:
+        result: Dict[str, Dict[str, Any]] = {}
+        for key, data in data_map.items():
+            result[key] = {
+                "commits": data["commits"],
+                "prs": data["prs"],
+                "repos": list(data["repos"]),
+            }
+        return result
 
-    return result
+    return {
+        "projects": serialize_group(project_data),
+        "individuals": serialize_group(individual_data),
+        "members": list(members.values()),
+        "timestamps": timestamps,
+    }
+
+
+def detect_scope_from_timestamps(timestamps: List[datetime]) -> Tuple[str, Optional[str], Optional[str], Optional[int]]:
+    if not timestamps:
+        return "biweekly", None, None, None
+    start = min(timestamps)
+    end = max(timestamps)
+    days = (end.date() - start.date()).days + 1
+    if days <= 16:
+        scope = "biweekly"
+    elif days <= 45:
+        scope = "monthly"
+    elif days <= 110:
+        scope = "quarterly"
+    else:
+        scope = "quarterly"
+    return scope, start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"), days
+
+
+def format_period_label(scope: str, days: Optional[int]) -> str:
+    if scope == "biweekly":
+        return "Bi-Weekly"
+    if scope == "monthly":
+        return "Monthly"
+    if scope == "quarterly":
+        return "Quarterly"
+    if scope == "weekly":
+        return "Weekly"
+    if days:
+        return f"{days}-Day"
+    return "Custom"
+
+
+def format_date_label(date_str: Optional[str]) -> str:
+    if not date_str:
+        return ""
+    try:
+        parsed = datetime.strptime(date_str, "%Y-%m-%d")
+        return parsed.strftime("%b %d")
+    except ValueError:
+        return date_str
+
+
+def build_report_title(scope: str, start_date: Optional[str], end_date: Optional[str], days: Optional[int]) -> str:
+    period_label = format_period_label(scope, days)
+    start_label = format_date_label(start_date)
+    end_label = format_date_label(end_date)
+    date_range = f"{start_label} – {end_label}" if start_label and end_label else ""
+    if date_range:
+        return f"Tokamak Network {period_label} Report: {date_range}"
+    return f"Tokamak Network {period_label} Report"
+
+
+def headline_phrase(text: str) -> str:
+    cleaned = re.sub(r"\.+$", "", text.strip())
+    cleaned = re.sub(
+        r"^(Launched|Improved|Delivered|Integrated|Strengthened|Updated|Added|Implemented|Built)\s+",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    words = cleaned.split()
+    if not words:
+        return ""
+    return " ".join(words[:4])
+
+
+def build_report_headline(summaries: Dict[str, Dict[str, Any]], report_type: str) -> str:
+    themes = {
+        "Ooo": "Privacy",
+        "Eco": "Staking & Governance",
+        "TRH": "Rollup Infrastructure",
+    }
+
+    keyword_patterns = {
+        "Ooo": [
+            ("Private Transactions", ["private", "channel", "proof", "zk", "confidential"]),
+            ("Secure Wallet Experiences", ["wallet", "snap", "extension", "menu"]),
+            ("Proof Performance", ["prove", "prover", "sigma", "optimiz", "cache"]),
+        ],
+        "Eco": [
+            ("Fast Withdrawal", ["withdrawal", "fast withdrawal", "rat"]),
+            ("Staking Infrastructure", ["staking", "validator", "seig", "delegate"]),
+            ("Governance UX", ["dao", "governance", "delegate", "voting"]),
+        ],
+        "TRH": [
+            ("Mainnet Readiness", ["mainnet", "pre-deployment", "safety", "validation"]),
+            ("Operational Tooling", ["backup", "monitor", "dashboard", "logs"]),
+            ("Deployment Experience", ["deploy", "sdk", "rollup", "hub"]),
+        ],
+    }
+
+    def pick_keyword(project: str, deliverables: List[str]) -> str:
+        patterns = keyword_patterns.get(project, [])
+        joined = " ".join(deliverables).lower()
+        for keyword, needles in patterns:
+            if any(needle in joined for needle in needles):
+                return keyword
+        return themes.get(project, project)
+
+    keywords = []
+    for project in ["Ooo", "Eco", "TRH"]:
+        summary = summaries.get(project)
+        if not summary:
+            continue
+
+        if report_type == "public":
+            deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 2)
+            if not deliverables:
+                deliverables = extract_public_deliverables(summary.get("top_commits", []), 2)
+        else:
+            deliverables = extract_deliverables(summary.get("top_commits", []), 2, public=False, with_links=False)
+
+        keywords.append(pick_keyword(project, deliverables))
+
+    if keywords:
+        unique = []
+        for keyword in keywords:
+            if keyword not in unique:
+                unique.append(keyword)
+        return f"{', '.join(unique)} Progress"
+    return f"{themes['Ooo']}, {themes['Eco']}, and {themes['TRH']} Progress"
 
 
 def prepare_summary(project: str, data: dict) -> dict:
@@ -187,6 +380,465 @@ def prepare_summary(project: str, data: dict) -> dict:
     }
 
 
+def simplify_message(message: str) -> str:
+    cleaned = re.sub(r"^(feat|fix|refactor|test|docs|chore|ci|merge)(\([^)]+\))?:\s*", "", message, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned)
+    cleaned = cleaned.strip()
+    return cleaned[:140]
+
+
+def sentence_case(text: str) -> str:
+    if not text:
+        return text
+    cleaned = text.strip()
+    if not cleaned:
+        return cleaned
+    return cleaned[0].upper() + cleaned[1:]
+
+
+def normalize_public_deliverable(message: str) -> str:
+    cleaned = simplify_message(message)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+
+    cleaned = re.sub(r"^(feature|feat)\s*:\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*\(?#?\d+\)?$", "", cleaned).strip()
+
+    replacements = [
+        (r"^(add|added)\s+", "Launched "),
+        (r"^(update|updated|improve|improved)\s+", "Improved "),
+        (r"^(fix|fixed|resolve|resolved)\s+", "Strengthened "),
+        (r"^(integrate|integrated)\s+", "Integrated "),
+        (r"^(implement|implemented|build|built)\s+", "Delivered "),
+    ]
+
+    for pattern, replacement in replacements:
+        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
+
+    return sentence_case(cleaned)
+
+
+def is_public_deliverable(text: str) -> bool:
+    if not text:
+        return False
+
+    lower = text.lower()
+    if len(text.split()) < 3:
+        return False
+    if lower.startswith(("with ", "and ", "for ", "to ")):
+        return False
+    if re.search(r"[a-z][A-Z]", text):
+        return False
+
+    skip_terms = [
+        "playwright",
+        "debugger",
+        "timing",
+        "instrument",
+        "benchmark",
+        "profile",
+        "test",
+        "e2e",
+        "ci",
+        "refactor",
+        "chore",
+        "merge",
+        "conflict",
+        "submodule",
+        "branch",
+        "json",
+        "config",
+        "script",
+        "plan",
+        "roadmap",
+        "delete",
+        "deleted",
+        "remove",
+        "removed",
+        "cleanup",
+        "docs",
+        "documentation",
+        "readme",
+        "guide",
+        "sdk",
+        "api",
+        "rpc",
+        "contract",
+        "contracts",
+    ]
+    return not any(term in lower for term in skip_terms)
+
+
+def extract_public_deliverables(commits: List[Dict[str, Any]], limit: int) -> List[str]:
+    seen: Set[str] = set()
+    deliverables: List[str] = []
+    for commit in commits:
+        msg = commit.get("message", "")
+        if not msg:
+            continue
+        cleaned = normalize_public_deliverable(msg)
+        if not is_public_deliverable(cleaned):
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deliverables.append(cleaned)
+        if len(deliverables) >= limit:
+            break
+    return deliverables
+
+
+def normalize_pr_title(title: str) -> str:
+    cleaned = title.strip()
+    cleaned = re.sub(
+        r"^(feat|feature|fix|refactor|docs|chore|ci)(\([^)]+\))?:\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\s*\(?#?\d+\)?$", "", cleaned).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return sentence_case(cleaned)
+
+
+def normalize_public_phrase(text: str) -> str:
+    cleaned = normalize_pr_title(text)
+    cleaned = re.sub(r"\b(merge|chore|refactor|ci|tests?|docs?|documentation)\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return sentence_case(cleaned)
+
+
+def choose_public_verb(text: str) -> str:
+    lower = text.lower()
+    if any(keyword in lower for keyword in ["launch", "release", "introduce"]):
+        return "Launched"
+    if any(keyword in lower for keyword in ["secure", "safety", "guard", "validation"]):
+        return "Secured"
+    if any(keyword in lower for keyword in ["expand", "scale", "increase"]):
+        return "Expanded"
+    if any(keyword in lower for keyword in ["optimize", "streamline", "refine"]):
+        return "Streamlined"
+    if any(keyword in lower for keyword in ["improve", "update", "upgrade", "enhance"]):
+        return "Improved"
+
+    verbs = ["Improved", "Launched", "Secured", "Expanded", "Streamlined"]
+    return verbs[sum(ord(c) for c in text) % len(verbs)]
+
+
+def publicize_deliverable(text: str) -> str:
+    cleaned = normalize_public_phrase(text)
+    lower = cleaned.lower()
+    if not cleaned:
+        return ""
+
+    if any(keyword in lower for keyword in ["mainnet", "pre-deployment", "safety", "validation"]):
+        return "Improved mainnet readiness and deployment safety"
+    if any(keyword in lower for keyword in ["monitor", "dashboard", "observability", "logs"]):
+        return "Improved operational visibility with monitoring tools"
+    if any(keyword in lower for keyword in ["staking", "validator", "delegate", "reward"]):
+        return "Improved staking experience and validator operations"
+    if any(keyword in lower for keyword in ["withdrawal", "fast withdrawal"]):
+        return "Improved fast withdrawal reliability and speed"
+    if any(keyword in lower for keyword in ["wallet", "snap", "extension"]):
+        return "Launched safer wallet experiences for private transactions"
+    if any(keyword in lower for keyword in ["privacy", "zk", "proof", "channel"]):
+        return "Improved privacy tooling for secure transactions"
+    if any(keyword in lower for keyword in ["rollup", "deploy", "hub", "sdk"]):
+        return "Improved rollup deployment experience"
+
+    if cleaned.lower().startswith(("add ", "added ", "implement ", "implemented ", "build ", "built ")):
+        return f"Launched {cleaned.lower().split(' ', 1)[1]}"
+    if cleaned.lower().startswith(("update ", "updated ", "improve ", "improved ", "enhance ", "enhanced ")):
+        return f"Improved {cleaned.lower().split(' ', 1)[1]}"
+    if cleaned.lower().startswith(("fix ", "fixed ", "resolve ", "resolved ")):
+        return f"Secured {cleaned.lower().split(' ', 1)[1]}"
+
+    verb = choose_public_verb(cleaned)
+    return f"{verb} {cleaned[0].lower() + cleaned[1:]}"
+
+
+def extract_public_pr_deliverables(prs: List[Dict[str, Any]], limit: int) -> List[str]:
+    seen: Set[str] = set()
+    deliverables: List[str] = []
+    for pr in prs:
+        title = pr.get("title", "")
+        if not title:
+            continue
+        cleaned = publicize_deliverable(title)
+        if not is_public_deliverable(cleaned):
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deliverables.append(cleaned)
+        if len(deliverables) >= limit:
+            break
+    return deliverables
+
+
+def extract_public_commit_deliverables(commits: List[Dict[str, Any]], limit: int) -> List[str]:
+    seen: Set[str] = set()
+    deliverables: List[str] = []
+    for commit in commits:
+        msg = commit.get("message", "")
+        if not msg:
+            continue
+        cleaned = publicize_deliverable(msg)
+        if not is_public_deliverable(cleaned):
+            continue
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deliverables.append(cleaned)
+        if len(deliverables) >= limit:
+            break
+    return deliverables
+
+
+def dedupe_prefixes(items: List[str]) -> List[str]:
+    results: List[str] = []
+    seen: Set[str] = set()
+    for item in items:
+        lower = item.lower()
+        lower = re.sub(r"^(launched|improved|secured|expanded|streamlined)\s+", "", lower)
+        if lower in seen:
+            continue
+        seen.add(lower)
+        results.append(item)
+    return results
+
+
+def extract_technical_deliverables(commits: List[Dict[str, Any]], limit: int) -> List[str]:
+    deliverables: List[str] = []
+    seen: Set[str] = set()
+    for commit in commits:
+        msg = simplify_message(commit.get("message", ""))
+        if not msg:
+            continue
+        repo = commit.get("repo")
+        module_hint = repo.replace("-", "/") if repo else "module"
+        lower_msg = msg.strip().lower()
+        if "initial commit" in lower_msg:
+            stripped = re.sub(r"(?i)\binitial commit\b[:\-\s]*", "", msg)
+            stripped = re.sub(r"\s+", " ", stripped).strip(" -:")
+            if stripped:
+                cleaned = f"{sentence_case(stripped)} in {module_hint}"
+            else:
+                cleaned = f"Established the foundation for {module_hint}"
+        elif re.fullmatch(r"(fix|fixed)", lower_msg):
+            cleaned = f"Fixed stability issues in {module_hint}"
+        elif re.fullmatch(r"(update|updated)", lower_msg):
+            cleaned = f"Updated core logic in {module_hint}"
+        else:
+            cleaned = f"{msg} in {module_hint}"
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        link = None
+        if commit.get("repo") and commit.get("sha"):
+            link = f"https://github.com/tokamak-network/{commit['repo']}/commit/{commit['sha']}"
+        if link:
+            deliverables.append(f"{cleaned} ([Commit]({link}))")
+        else:
+            deliverables.append(cleaned)
+        if len(deliverables) >= limit:
+            break
+    return deliverables
+
+
+def build_raw_data_input(
+    summaries: Dict[str, Dict[str, Any]],
+    individual_summaries: Dict[str, Dict[str, Any]],
+) -> str:
+    lines: List[str] = []
+    for project_key in ["Ooo", "Eco", "TRH"]:
+        summary = summaries.get(project_key)
+        if not summary:
+            continue
+        lines.append(f"Project: {project_key}")
+        lines.append(f"Repositories: {', '.join(summary.get('repos', []))}")
+        lines.append("Top commits:")
+        for commit in summary.get("top_commits", [])[:15]:
+            repo = commit.get("repo", "")
+            msg = commit.get("message", "")
+            sha = commit.get("sha", "")
+            lines.append(f"- [{repo}] {msg} (sha: {sha})")
+        lines.append("Merged PRs:")
+        for pr in summary.get("merged_pr_list", [])[:10]:
+            repo = pr.get("repo", "")
+            number = pr.get("pr_number", "")
+            title = pr.get("title", "")
+            lines.append(f"- [{repo}] PR#{number}: {title}")
+        lines.append("")
+
+    if individual_summaries:
+        lines.append("Contributors:")
+        for payload in individual_summaries.values():
+            label = payload.get("label", "")
+            summary = payload.get("summary", {})
+            commits = summary.get("top_commits", [])[:3]
+            commit_snippets = "; ".join(c.get("message", "") for c in commits if c.get("message"))
+            lines.append(f"- {label}: {commit_snippets}")
+
+    return "\n".join(lines).strip()
+
+
+def generate_full_report_with_ai(
+    report_type: str,
+    summaries: Dict[str, Dict[str, Any]],
+    individual_summaries: Dict[str, Dict[str, Any]],
+    date_range: Dict[str, Optional[str]],
+    total_commits: int,
+    total_prs: int,
+    total_repos: int,
+) -> Optional[str]:
+    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+        return None
+
+    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+    start = date_range.get("start") or "N/A"
+    end = date_range.get("end") or "N/A"
+    raw_data = build_raw_data_input(summaries, individual_summaries)
+
+    if report_type == "technical":
+        prompt = f"""[Role]
+You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
+
+[Team & Project Context]
+- 2.2 (Ooo): Zero-Knowledge Proof-Based Private App Channels.
+- 2.3 (Eco): Decentralized Staking and Governance.
+- 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
+
+[Constraints]
+1. Header: "Tokamak Network Technical Report: [Date Range]"
+2. Summary: Display "Total: X commits, Y merged PRs across Z repositories" only ONCE at the top.
+3. Bullets: Every bullet point must follow this strict format:
+   - "* [Action Verb] [Specific Function/Feature] in [Repository Directory Path] ([Commit](URL))"
+   - Example: "* Implemented updateUserStorageSlot in Tokamak/zk/EVM/contracts ([Commit](https://...))"
+4. Detail: Do not use vague words like "fixed" or "updated" alone. If the data is sparse, infer the technical context from the directory path or commit message to be as descriptive as possible.
+5. Contributors: For each main contributor, summarize their primary technical achievement during this period.
+
+[Data Input]
+Date Range: {start} to {end}
+Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories
+
+{raw_data}
+"""
+    else:
+        prompt = f"""[Role]
+You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
+
+[Team & Project Context]
+- 2.2 (Ooo): Private Transactions & Secure Channels.
+- 2.3 (Eco): Staking Rewards & Community Governance.
+- 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
+
+[Constraints]
+1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
+2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
+3. Grouping: Use engaging titles:
+   - "Private & Secure Transactions (Ooo)"
+   - "Staking & Economic Security (Eco)"
+   - "Scalable Infrastructure (TRH)"
+4. Jargon Filter: Translate all technical terms into "User Impact" language.
+   - Example: Instead of "NFT-based registry", use "Secured ownership through digital asset architecture."
+   - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
+5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
+6. Contributors: Focus on how each person's work improved the overall project mission.
+
+[Data Input]
+Date Range: {start} to {end}
+Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories
+
+{raw_data}
+"""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4.5",
+            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return getattr(response.content[0], "text", "").strip() or None
+    except Exception:
+        return None
+
+
+def simplify_message_public(message: str) -> str:
+    cleaned = simplify_message(message)
+    cleaned = re.sub(
+        r"\b(ci|api|sdk|contract|contracts|refactor|test|tests|doc|docs|chore|merge|pr|rpc|zk|zkp|l1|l2|e2e)\b",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\b(add|added|update|updated|fix|fixed|refactor|remove|removed|chore|feat|feature)\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned[:140]
+
+
+def classify_commits(commits: List[Dict[str, Any]]) -> Dict[str, int]:
+    categories = {"feature": 0, "fix": 0, "refactor": 0, "test": 0, "docs": 0, "other": 0}
+    for commit in commits:
+        msg = commit.get("message", "").lower()
+        if any(key in msg for key in ["feat", "add", "implement", "launch", "introduce"]):
+            categories["feature"] += 1
+        elif any(key in msg for key in ["fix", "bug", "issue", "error", "hotfix"]):
+            categories["fix"] += 1
+        elif any(key in msg for key in ["refactor", "optimiz", "perf", "cleanup", "simplify"]):
+            categories["refactor"] += 1
+        elif "test" in msg:
+            categories["test"] += 1
+        elif "doc" in msg:
+            categories["docs"] += 1
+        else:
+            categories["other"] += 1
+    return categories
+
+
+def top_repos_from_commits(commits: List[Dict[str, Any]], limit: int = 3) -> List[str]:
+    counts: Dict[str, int] = defaultdict(int)
+    for commit in commits:
+        repo = commit.get("repo")
+        if repo:
+            counts[repo] += 1
+    return [repo for repo, _ in sorted(counts.items(), key=lambda x: x[1], reverse=True)[:limit]]
+
+
+def extract_deliverables(
+    commits: List[Dict[str, Any]],
+    limit: int,
+    public: bool,
+    with_links: bool = False,
+) -> List[str]:
+    seen: Set[str] = set()
+    deliverables: List[str] = []
+    for commit in commits:
+        msg = commit.get("message", "")
+        if not msg:
+            continue
+        cleaned = simplify_message_public(msg) if public else simplify_message(msg)
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        if public:
+            cleaned = sentence_case(cleaned)
+        if with_links and commit.get("repo") and commit.get("sha"):
+            link = f"https://github.com/tokamak-network/{commit['repo']}/commit/{commit['sha']}"
+            deliverables.append(f"{cleaned} ([Commit]({link}))")
+        else:
+            deliverables.append(cleaned)
+        if len(deliverables) >= limit:
+            break
+    return deliverables
+
+
 def generate_technical_section(project: str, summary: dict, use_ai: bool = True) -> str:
     """Generate technical report section."""
     info = SECTION_INFO_TECHNICAL[project]
@@ -209,6 +861,8 @@ def generate_public_section(project: str, summary: dict, use_ai: bool = True) ->
 
 def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
     """Generate technical section using Claude API."""
+    if anthropic is None:
+        return generate_basic_technical(project, summary, info)
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
@@ -221,8 +875,26 @@ def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
         for p in summary['merged_pr_list'][:10]
     ])
 
-    prompt = f"""You are writing a biweekly development report for Tokamak Network's {info['title']} team.
+    prompt = f"""[Role]
+You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
 
+[Team & Project Context]
+- 2.2 (Ooo): Zero-Knowledge Proof-Based Private App Channels.
+- 2.3 (Eco): Decentralized Staking and Governance.
+- 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
+
+[Constraints]
+1. Header: "Tokamak Network Technical Report: [Date Range]"
+2. Summary: Display "Total: X commits, Y merged PRs across Z repositories" only ONCE at the top.
+3. Bullets: Every bullet point must follow this strict format:
+   - "* [Action Verb] [Specific Function/Feature] in [Repository Directory Path] ([Commit](URL))"
+   - Example: "* Implemented updateUserStorageSlot in Tokamak/zk/EVM/contracts ([Commit](https://...))"
+4. Detail: Do not use vague words like "fixed" or "updated" alone. If the data is sparse, infer the technical context from the directory path or commit message to be as descriptive as possible.
+5. Contributors: For each main contributor, summarize their primary technical achievement during this period.
+
+[Data Input]
+Project: {info['title']}
+Date Range: {summary.get('start_date', 'N/A')} to {summary.get('end_date', 'N/A')}
 Project Context: {info['context']}
 Total commits: {summary['total_commits']}
 Merged PRs: {summary['merged_prs']}
@@ -232,13 +904,7 @@ Top commits:
 
 Merged PRs:
 {pr_list}
-
-Generate 8-10 bullet points summarizing key development activities. Follow these rules:
-1. Each bullet should start with a past-tense verb (Implemented, Fixed, Added, Refactored)
-2. Include technical details
-3. Add GitHub links: ([PR#XX](https://github.com/tokamak-network/REPO/pull/NUMBER)) or ([Commit](https://github.com/tokamak-network/REPO/commit/SHA))
-
-Output only the bullet points."""
+"""
 
     try:
         response = client.messages.create(
@@ -246,14 +912,16 @@ Output only the bullet points."""
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}]
         )
-        bullets = response.content[0].text.strip()
-        return f"#### {info['number']}. {info['title']} ([Overview]({info['overview_url']})).\n\n{bullets}\n"
+        bullets = getattr(response.content[0], "text", "").strip()
+        return f"{bullets}\n"
     except Exception as e:
         return generate_basic_technical(project, summary, info)
 
 
 def generate_with_ai_public(project: str, summary: dict, info: dict) -> str:
     """Generate public section using Claude API."""
+    if anthropic is None:
+        return generate_basic_public(project, summary, info)
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
@@ -261,24 +929,37 @@ def generate_with_ai_public(project: str, summary: dict, info: dict) -> str:
         for c in summary['top_commits'][:20]
     ])
 
-    prompt = f"""Write a biweekly report for Tokamak Network targeting INVESTORS, PARTNERS, and COMMUNITY.
+    prompt = f"""[Role]
+You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
 
+[Team & Project Context]
+- 2.2 (Ooo): Private Transactions & Secure Channels.
+- 2.3 (Eco): Staking Rewards & Community Governance.
+- 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
+
+[Constraints]
+1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
+2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
+3. Grouping: Use engaging titles:
+   - "Private & Secure Transactions (Ooo)"
+   - "Staking & Economic Security (Eco)"
+   - "Scalable Infrastructure (TRH)"
+4. Jargon Filter: Translate all technical terms into "User Impact" language.
+   - Example: Instead of "NFT-based registry", use "Secured ownership through digital asset architecture."
+   - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
+5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
+6. Contributors: Focus on how each person's work improved the overall project mission.
+
+[Data Input]
 Project: {info['title']}
+Date Range: {summary.get('start_date', 'N/A')} to {summary.get('end_date', 'N/A')}
 Context: {info['context']}
 Business Focus: {info['business_focus']}
 Total improvements: {summary['total_commits']}
 
 Recent commits (for context only):
 {commit_list}
-
-Generate 5-7 bullet points for NON-TECHNICAL audience:
-1. NO technical jargon (no "commit", "PR", "API", "SDK", "contract")
-2. Focus on VALUE and user benefits
-3. Use business language: "improved", "enhanced", "launched"
-4. NO GitHub links
-5. Start with action verbs: "Enhanced", "Launched", "Improved"
-
-Output only the bullet points."""
+"""
 
     try:
         response = client.messages.create(
@@ -286,38 +967,176 @@ Output only the bullet points."""
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
-        bullets = response.content[0].text.strip()
-        return f"#### {info['number']}. {info['title']}\n\n{bullets}\n"
+        bullets = getattr(response.content[0], "text", "").strip()
+        return f"{bullets}\n"
     except Exception as e:
         return generate_basic_public(project, summary, info)
 
 
 def generate_basic_technical(project: str, summary: dict, info: dict) -> str:
     """Generate basic technical section without AI."""
-    bullets = []
-    for commit in summary['top_commits'][:10]:
-        msg = commit['message']
-        msg = re.sub(r'^(feat|fix|refactor|test|docs|chore)(\([^)]+\))?:\s*', '', msg, flags=re.IGNORECASE)
-        if msg:
-            link = f"https://github.com/tokamak-network/{commit['repo']}/commit/{commit['sha']}"
-            bullets.append(f"* {msg[0].upper()}{msg[1:]} ([Commit]({link})).")
+    commits = summary['top_commits']
+    top_repos = top_repos_from_commits(commits)
+    repo_list = ", ".join(top_repos) if top_repos else "core repositories"
 
-    return f"#### {info['number']}. {info['title']} ([Overview]({info['overview_url']})).\n\n" + "\n".join(bullets) + "\n"
+    deliverables = extract_technical_deliverables(commits, 5)
+    if not deliverables:
+        deliverables = ["Maintenance and reliability updates across core systems."]
+
+    bullets = [f"* Delivered updates across {repo_list}."]
+    bullets.extend([f"* {item}." if not item.endswith(")") else f"* {item}" for item in deliverables])
+    return "\n".join(bullets) + "\n"
 
 
 def generate_basic_public(project: str, summary: dict, info: dict) -> str:
     """Generate basic public section without AI."""
-    bullets = [
-        f"* Made significant progress with {summary['total_commits']} improvements.",
-        f"* Enhanced system reliability across {len(summary['repos'])} components.",
-        "* Continued work toward upcoming milestones.",
-    ]
-    return f"#### {info['number']}. {info['title']}\n\n" + "\n".join(bullets) + "\n"
+    commits = summary['top_commits']
+    merged_prs = summary.get('merged_pr_list', [])
+    intro = sentence_case(info['context'].rstrip('.'))
+    deliverables = extract_public_pr_deliverables(merged_prs, 4)
+    if len(deliverables) < 3:
+        deliverables.extend(extract_public_commit_deliverables(commits, 4 - len(deliverables)))
+    deliverables = dedupe_prefixes(deliverables)
+    deliverables = deliverables[:3]
+    bullets = [f"* {intro}."]
+    if deliverables:
+        bullets.extend([f"* {item}." for item in deliverables])
+    else:
+        bullets.append("* Delivered steady progress on core initiatives.")
+
+    return "\n".join(bullets) + "\n"
 
 
-def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits: int, total_prs: int, total_repos: int) -> str:
+def generate_individual_section(member_label: str, summary: dict, report_type: str, use_ai: bool = True) -> str:
+    info = SECTION_INFO_INDIVIDUAL_TECHNICAL if report_type == "technical" else SECTION_INFO_INDIVIDUAL_PUBLIC
+
+    if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
+        return generate_with_ai_individual(member_label, summary, info, report_type)
+
+    return generate_basic_individual(member_label, summary, info, report_type)
+
+
+def generate_with_ai_individual(member_label: str, summary: dict, info: dict, report_type: str) -> str:
+    if anthropic is None:
+        return generate_basic_individual(member_label, summary, info, report_type)
+    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+
+    commit_list = "\n".join([
+        f"- [{c['repo']}] {c['message']} (sha: {c['sha']})"
+        for c in summary['top_commits'][:20]
+    ])
+
+    pr_list = "\n".join([
+        f"- [{p['repo']}] PR#{p['pr_number']}: {p['title']}"
+        for p in summary['merged_pr_list'][:10]
+    ])
+
+    if report_type == "technical":
+        prompt = f"""Write a monthly developer summary for {member_label}.
+
+Context: {info['context']}
+Total commits: {summary['total_commits']}
+Merged PRs: {summary['merged_prs']}
+
+Top commits:
+{commit_list}
+
+Merged PRs:
+{pr_list}
+
+Generate 6-8 bullet points summarizing key development activities. Rules:
+1. Start each bullet with a past-tense verb.
+2. Include technical details.
+3. Add GitHub links: ([PR#XX](https://github.com/tokamak-network/REPO/pull/NUMBER)) or ([Commit](https://github.com/tokamak-network/REPO/commit/SHA)).
+
+Output only the bullet points."""
+    else:
+        prompt = f"""Write a monthly activity summary for {member_label} targeting non-technical readers.
+
+Context: {info['context']}
+Total improvements: {summary['total_commits']}
+
+Recent commits (for context only):
+{commit_list}
+
+Generate 4-6 bullet points:
+1. No technical jargon.
+2. Focus on value and outcomes.
+3. No GitHub links.
+4. Start with action verbs.
+
+Output only the bullet points."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4.5",
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        bullets = getattr(response.content[0], "text", "").strip()
+        return f"{bullets}\n"
+    except Exception:
+        return generate_basic_individual(member_label, summary, info, report_type)
+
+
+def generate_basic_individual(member_label: str, summary: dict, info: dict, report_type: str) -> str:
+    def rewrite_initial_commit(text: str) -> str:
+        lowered = text.strip().lower()
+        if "initial commit" in lowered:
+            stripped = re.sub(r"(?i)\binitial commit\b[:\-\s]*", "", text)
+            stripped = re.sub(r"\s+", " ", stripped).strip(" -:")
+            if stripped:
+                return stripped
+            module_hint = "the project"
+            match = re.search(r"\bin ([a-z0-9]+(?:/[a-z0-9]+)+)\b", lowered)
+            if match:
+                module_hint = match.group(1)
+            return f"Established the foundation for {module_hint}"
+        return text
+
+    if report_type == "public":
+        deliverables = extract_public_pr_deliverables(summary.get('merged_pr_list', []), 3)
+        if len(deliverables) < 2:
+            deliverables.extend(extract_public_commit_deliverables(summary['top_commits'], 3 - len(deliverables)))
+        deliverables = dedupe_prefixes(deliverables)
+        deliverables = deliverables[:2]
+    else:
+        deliverables = extract_technical_deliverables(summary['top_commits'], 2)
+    if deliverables:
+        cleaned = [rewrite_initial_commit(item.replace(" ([Commit](", " ([Commit](")) for item in deliverables]
+        return "; ".join(sentence_case(item) for item in cleaned)
+    return "Delivered targeted progress across individual initiatives"
+
+
+def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]], report_type: str, use_ai: bool = True) -> str:
+    if not individual_summaries:
+        return ""
+
+    entries = []
+    for payload in individual_summaries.values():
+        summary = payload["summary"]
+        label = payload["label"]
+        entries.append((summary["total_commits"], label, summary))
+
+    entries.sort(key=lambda x: x[0], reverse=True)
+    top_entries = entries[:8]
+    remaining = max(len(entries) - len(top_entries), 0)
+
+    lines = []
+    for _, label, summary in top_entries:
+        detail = generate_basic_individual(label, summary, SECTION_INFO_INDIVIDUAL_PUBLIC, report_type)
+        if detail:
+            lines.append(f"- {label}: {detail}.")
+
+    if remaining:
+        lines.append(f"- Others: {remaining} contributors with smaller updates.")
+
+    return "\n".join(lines) + "\n"
+
+
+def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits: int, total_prs: int, total_repos: int, date_range: Optional[dict] = None) -> str:
     """Generate engaging highlight using AI for public reports."""
-    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY'):
+    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
     try:
@@ -330,69 +1149,81 @@ def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits:
             achievements.append(f"{project}: {', '.join(top_msgs)}")
 
         if report_type == "public":
-            prompt = f"""You are writing an executive highlight for Tokamak Network's biweekly report.
-Target audience: INVESTORS, PARTNERS, and COMMUNITY members who may not read the full report.
+            date_label = "N/A"
+            if date_range and date_range.get("start") and date_range.get("end"):
+                date_label = f"{date_range['start']} to {date_range['end']}"
+            prompt = f"""[Role]
+You are a Visionary Tech Evangelist. Your task is to generate an engaging Public Development Report for Tokamak Network.
 
-This period's activity:
-- Total improvements: {total_commits}
-- Major features completed: {total_prs}
-- Active project areas: {total_repos}
+[Tone]
+Inspiring, accessible, and benefit-oriented. Focus on "Why it matters" and "User Impact."
 
-Key work areas (for context, do NOT use technical terms):
+[Constraints]
+1. Header: "Tokamak Network Ecosystem Update: [Date Range]"
+2. Highlight Section:
+   - Write a compelling 3-sentence intro about how Tokamak is making blockchain more accessible.
+   - Use bold numbers for total development activity.
+3. Content Grouping (Use User-Friendly Titles):
+   - Group 2.2: "Advancing Privacy & Secure Transactions"
+   - Group 2.3: "Empowering Community Staking & Rewards"
+   - Group 2.4: "Scaling the Future: Rollup Infrastructure"
+4. Formatting for Bullets:
+   - Translate technical tasks into user benefits.
+   - Use "Launched", "Secured", "Improved" to start sentences.
+   - Example: Instead of "updated MPT key", use "Enhanced security for private wallet deposits."
+5. Contributor Summary:
+   - Focus on project-level achievements (e.g., "Thomas: Built a new on-chain documentation system for transparency").
+
+[Data]
+Date Range: {date_label}
+Total commits: {total_commits}
+Merged PRs: {total_prs}
+Active repositories: {total_repos}
+Key work areas:
 {chr(10).join(achievements)}
-
-Write a compelling 3-4 sentence highlight that:
-1. HOOKS the reader immediately - make them want to read more
-2. Emphasizes STRATEGIC VALUE and BUSINESS IMPACT
-3. Mentions specific achievements in accessible language (e.g., "privacy technology", "staking infrastructure", "deployment platform")
-4. Creates EXCITEMENT about Tokamak Network's progress
-5. Sounds confident and forward-looking
-
-DO NOT:
-- Use numbers like "314 commits" or "6 PRs" as the main message
-- Use technical jargon (no "commits", "PRs", "repositories", "contracts", "nodes")
-- Be generic or boring
-
-Examples of GOOD hooks:
-- "Tokamak Network is redefining blockchain privacy..."
-- "This period marked a pivotal step toward..."
-- "Major breakthroughs in privacy technology..."
-
-Write ONLY the highlight paragraph, no labels or headers."""
+"""
 
         else:  # technical
-            prompt = f"""You are writing a technical highlight for Tokamak Network's biweekly development report.
-Target audience: DEVELOPERS, TECHNICAL PARTNERS, and ENGINEERING teams.
+            date_label = "N/A"
+            if date_range and date_range.get("start") and date_range.get("end"):
+                date_label = f"{date_range['start']} to {date_range['end']}"
+            prompt = f"""[Role]
+You are a Senior Software Architect. Your task is to generate a highly detailed Technical Development Report for Tokamak Network.
 
-This period's metrics:
-- Total commits: {total_commits}
-- Merged PRs: {total_prs}
-- Active repositories: {total_repos}
+[Tone]
+Authoritative, dry, objective, and evidence-based. Focus on "What" and "How."
 
+[Constraints]
+1. Header: "Tokamak Network Technical Report: [Date Range]"
+2. Highlight:
+   - State total commit count and PRs merged.
+   - Summarize architectural shifts or performance improvements in 3 points.
+3. Content Grouping:
+   - Group 2.2: ZKP Private Channels (Ooo)
+   - Group 2.3: Staking & Governance (Eco)
+   - Group 2.4: Rollup Infrastructure (TRH)
+4. Formatting for Bullets:
+   - Every update must include the specific function name or module changed.
+   - You MUST append the [Commit](URL) link at the end of each line if provided in data.
+   - Format: "- [Feature/Fix]: [Detailed description mentioning code changes] ([Commit](Link))"
+5. Contributor Summary:
+   - Focus on the technical stack used (e.g., "Thomas: Configured Foundry and verified Solidity sources").
+
+[Data]
+Date Range: {date_label}
+Total commits: {total_commits}
+Merged PRs: {total_prs}
+Active repositories: {total_repos}
 Key development areas:
 {chr(10).join(achievements)}
-
-Write a concise 3-4 sentence technical highlight that:
-1. Summarizes the most SIGNIFICANT technical achievements
-2. Mentions specific systems/components improved (e.g., "zk-SNARK circuits", "staking contracts", "DRB nodes")
-3. Highlights architectural improvements or major refactors
-4. Notes any critical bug fixes or security enhancements
-5. Sounds professional and technically precise
-
-Include relevant metrics (commits, PRs) but focus on WHAT was achieved, not just numbers.
-
-Examples:
-- "This period focused on strengthening the ZK proof system with optimized Groth16 verification..."
-- "Major infrastructure improvements landed across the staking and rollup deployment stack..."
-
-Write ONLY the highlight paragraph, no labels or headers."""
+"""
 
         response = client.messages.create(
             model="claude-sonnet-4.5",
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
-        return response.content[0].text.strip()
+        return getattr(response.content[0], "text", "").strip()
 
     except Exception as e:
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
@@ -411,38 +1242,117 @@ async def root():
     return {"message": "Biweekly Report Generator API", "version": "1.0.0"}
 
 
+@app.post("/api/analyze")
+async def analyze_csv(
+    file: UploadFile = File(...),
+):
+    try:
+        content = await file.read()
+        content_str = content.decode('utf-8')
+
+        parsed = parse_csv_content(content_str)
+        scope, start_date, end_date, days = detect_scope_from_timestamps(parsed["timestamps"])
+
+        return JSONResponse({
+            "success": True,
+            "detected_scope": scope,
+            "date_range": {
+                "start": start_date,
+                "end": end_date,
+                "days": days,
+            },
+            "members": parsed["members"],
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/generate")
 async def generate_report(
     file: UploadFile = File(...),
     report_type: str = Form("technical"),
-    use_ai: bool = Form(True)
+    use_ai: bool = Form(True),
+    report_scope: str = Form("auto"),
+    project_filter: str = Form("all"),
+    member_filter: str = Form("all"),
+    include_individuals: bool = Form(True),
 ):
     """Generate report from uploaded CSV file."""
     try:
         content = await file.read()
         content_str = content.decode('utf-8')
 
-        project_data = parse_csv_content(content_str)
+        parsed = parse_csv_content(content_str)
+        project_data = parsed["projects"]
+        individual_data = parsed["individuals"]
+        members = parsed["members"]
 
-        if not project_data:
+        if not project_data and not individual_data:
             raise HTTPException(status_code=400, detail="No valid GitHub data found in CSV")
+
+        detected_scope, start_date, end_date, days = detect_scope_from_timestamps(parsed["timestamps"])
+        scope = detected_scope if report_scope == "auto" else report_scope
 
         # Prepare summaries
         summaries = {}
-        for project in ["Ooo", "Eco", "TRH"]:
+        project_keys = ["Ooo", "Eco", "TRH"]
+        if project_filter != "all":
+            project_keys = [project_filter]
+
+        for project in project_keys:
             if project in project_data:
-                summaries[project] = prepare_summary(project, project_data[project])
+                summary = prepare_summary(project, project_data[project])
+                summary["start_date"] = start_date
+                summary["end_date"] = end_date
+                summaries[project] = summary
+
+        individual_summaries = {}
+        member_lookup = {m["id"]: m for m in members}
+        if include_individuals and scope in {"monthly", "biweekly"}:
+            selected_members = list(individual_data.keys())
+            if member_filter != "all":
+                selected_members = [member_filter] if member_filter in individual_data else []
+
+            for member_id in selected_members:
+                data = individual_data.get(member_id)
+                if not data:
+                    continue
+                label = member_lookup.get(member_id, {}).get("label", member_id)
+                member_summary = prepare_summary(member_id, data)
+                member_summary["start_date"] = start_date
+                member_summary["end_date"] = end_date
+                individual_summaries[member_id] = {
+                    "label": label,
+                    "summary": member_summary,
+                }
 
         # Calculate totals
         total_commits = sum(s['total_commits'] for s in summaries.values())
         total_prs = sum(s['merged_prs'] for s in summaries.values())
         total_repos = sum(len(s['repos']) for s in summaries.values())
 
+        date_range = {
+            "start": start_date,
+            "end": end_date,
+        }
+
+        full_report = None
+        if use_ai:
+            full_report = generate_full_report_with_ai(
+                report_type,
+                summaries,
+                individual_summaries,
+                date_range,
+                total_commits,
+                total_prs,
+                total_repos,
+            )
+
         # Generate sections
         sections = []
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
 
-        for project in ["Ooo", "Eco", "TRH"]:
+        for project in project_keys:
             if project in summaries:
                 if report_type == "technical":
                     section = generate_technical_section(project, summaries[project], use_ai)
@@ -450,27 +1360,53 @@ async def generate_report(
                     section = generate_public_section(project, summaries[project], use_ai)
                 sections.append({
                     "project": project,
-                    "title": section_info[project]["title"],
+                    "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
+                    "content": section,
+                })
+
+        if include_individuals and scope in {"monthly", "biweekly"}:
+            section = generate_individuals_section(individual_summaries, report_type, use_ai)
+            if section:
+                sections.append({
+                    "project": "individuals",
+                    "title": f"{SECTION_INFO_INDIVIDUAL_TECHNICAL['number']}. {SECTION_INFO_INDIVIDUAL_TECHNICAL['title']}",
                     "content": section,
                 })
 
         # Generate highlight
-        if use_ai:
-            highlight = generate_highlight_with_ai(summaries, report_type, total_commits, total_prs, total_repos)
+        if use_ai and not full_report:
+            highlight = generate_highlight_with_ai(
+                summaries,
+                report_type,
+                total_commits,
+                total_prs,
+                total_repos,
+                {"start": start_date, "end": end_date},
+            )
         else:
             highlight = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
 
         return JSONResponse({
             "success": True,
             "report_type": report_type,
+            "report_scope": scope,
+            "date_range": {
+                "start": start_date,
+                "end": end_date,
+                "days": days,
+            },
             "stats": {
                 "total_commits": total_commits,
                 "total_prs": total_prs,
                 "total_repos": total_repos,
             },
             "highlight": highlight,
+            "title": build_report_title(scope, start_date, end_date, days),
+            "headline": build_report_headline(summaries, report_type),
+            "full_report": full_report,
             "sections": sections,
             "summaries": summaries,
+            "members": members,
         })
 
     except Exception as e:
