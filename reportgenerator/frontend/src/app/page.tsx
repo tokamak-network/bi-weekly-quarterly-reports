@@ -71,7 +71,7 @@ export default function Home() {
   const [period, setPeriod] = useState('weekly')
   const [startDate, setStartDate] = useState('2026. 02. 01.')
   const [endDate, setEndDate] = useState('2026. 02. 10.')
-  const [useAI, setUseAI] = useState(false)
+  const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [includeIndividuals, setIncludeIndividuals] = useState(true)
   const [activeView, setActiveView] = useState<'preview' | 'raw'>('preview')
@@ -388,18 +388,20 @@ export default function Home() {
                   <div>
                     <div className="text-sm font-medium text-gray-800">Use AI for summaries</div>
                     <p className="mt-1 text-xs text-gray-500">
-                      API 키 사용량 초과로 현재 비활성화되어 있습니다.
+                      Toggles Tokamak AI summaries when credentials are available.
                     </p>
-                    <span className="mt-2 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                      AI 일시 중단
-                    </span>
                   </div>
                   <button
-                    disabled
-                    className="flex h-7 w-12 cursor-not-allowed items-center rounded-full bg-gray-200 px-1 opacity-70"
-                    aria-disabled="true"
+                    onClick={() => setUseAI((prev) => !prev)}
+                    className={`flex h-7 w-12 items-center rounded-full px-1 transition ${
+                      useAI ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
                   >
-                    <span className="h-5 w-5 translate-x-0 rounded-full bg-white shadow" />
+                    <span
+                      className={`h-5 w-5 rounded-full bg-white shadow transition ${
+                        useAI ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
                   </button>
                 </div>
                 <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
