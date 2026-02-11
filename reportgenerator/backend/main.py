@@ -706,6 +706,33 @@ def ensure_public_verb(text: str) -> str:
     return f"Improved {text[0].lower() + text[1:]}"
 
 
+def diversify_public_verb(text: str, repo_name: str = "") -> str:
+    if not text or not repo_name:
+        return text
+    match = re.match(r"^Improved\s+(.+)$", text, flags=re.IGNORECASE)
+    if not match:
+        return text
+    lower = text.lower()
+    if any(keyword in lower for keyword in ["launch", "release", "introduce"]):
+        return text
+
+    preferred = None
+    if any(keyword in lower for keyword in ["security", "secure", "safety", "validation", "hardening"]):
+        preferred = "Secured"
+    elif any(keyword in lower for keyword in ["deployment", "rollup", "pipeline", "workflow", "tooling"]):
+        preferred = "Streamlined"
+    elif any(keyword in lower for keyword in ["staking", "governance", "delegate", "reward"]):
+        preferred = "Strengthened"
+    elif any(keyword in lower for keyword in ["support", "coverage", "compatibility", "integration"]):
+        preferred = "Expanded"
+
+    verbs = ["Improved", "Strengthened", "Expanded", "Streamlined", "Secured"]
+    verb = preferred or verbs[sum(ord(c) for c in repo_name) % len(verbs)]
+    if verb == "Improved":
+        return text
+    return f"{verb} {match.group(1)}"
+
+
 def enrich_public_deliverable(text: str, project: str, repo_name: str = "") -> str:
     if not text:
         return text
@@ -1210,6 +1237,7 @@ def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = T
     deliverable = deliverables[0] if deliverables else "Improved core infrastructure for better performance"
     deliverable = ensure_public_verb(enrich_public_deliverable(deliverable, "", repo_name))
     deliverable = rewrite_public_jargon(deliverable, repo_name)
+    deliverable = diversify_public_verb(deliverable, repo_name)
     return f"* [{repo_name}] {deliverable}.\n"
 
 
@@ -1718,7 +1746,11 @@ async def generate_report(
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
 
         if report_grouping == "repository":
-            for repo_name, summary in summaries.items():
+            entries = list(summaries.items())
+            if "Other repos" in summaries:
+                entries = [(name, summary) for name, summary in entries if name != "Other repos"]
+                entries.append(("Other repos", summaries["Other repos"]))
+            for repo_name, summary in entries:
                 if report_type == "technical":
                     section = generate_repo_technical_section(repo_name, summary, use_ai)
                 else:
