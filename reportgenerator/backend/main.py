@@ -485,6 +485,47 @@ def sentence_case(text: str) -> str:
     return cleaned[0].upper() + cleaned[1:]
 
 
+def normalize_technical_highlight_phrase(text: str) -> str:
+    cleaned = text.strip()
+    cleaned = re.sub(
+        r"^(add|adds|added)\s+",
+        "Added ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(integrate|integrates|integrated)\s+",
+        "Integrated ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(remove|removes|removed)\s+",
+        "Removed ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(update|updates|updated)\s+",
+        "Updated ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(fix|fixed|fixes)\s+",
+        "Fixed ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(
+        r"^(implement|implements|implemented)\s+",
+        "Implemented ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned
+
+
 def normalize_public_deliverable(message: str) -> str:
     cleaned = simplify_message(message)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
@@ -841,6 +882,70 @@ def format_public_highlight_items(items: List[str]) -> str:
         text = resolve_verb_conflicts(text)
         cleaned_items.append(text)
     return ", ".join(cleaned_items)
+
+
+def extract_technical_highlight_items(commits: List[Dict[str, Any]], limit: int) -> List[str]:
+    seen: Set[str] = set()
+    items: List[str] = []
+    for commit in commits:
+        msg = commit.get("message", "")
+        if not msg:
+            continue
+        msg = sanitize_initial_commit(msg, commit.get("repo"), True)
+        cleaned = simplify_message(msg)
+        if not cleaned:
+            continue
+        if not is_public_deliverable(cleaned):
+            continue
+        cleaned = sentence_case(cleaned)
+        cleaned = normalize_technical_highlight_phrase(cleaned)
+        key = cleaned.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(cleaned)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def generate_technical_highlight(
+    summaries: Dict[str, Dict[str, Any]],
+    total_commits: int,
+    total_prs: int,
+    total_repos: int,
+) -> str:
+    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    focus: List[Tuple[str, str]] = []
+    for repo_name, summary in entries:
+        if repo_name == "Other repos":
+            continue
+        items = extract_technical_highlight_items(summary.get("top_commits", []), 1)
+        if items:
+            focus.append((repo_name, items[0]))
+        if len(focus) >= 3:
+            break
+
+    if not focus:
+        return f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+
+    if len(focus) == 1:
+        sentence_one = f"Key engineering progress centered on {focus[0][0]}, including {focus[0][1]}."
+        sentence_two = ""
+    else:
+        sentence_one = (
+            f"Key engineering progress landed in {focus[0][0]} and {focus[1][0]}, "
+            f"including {focus[0][1]} and {focus[1][1]}."
+        )
+        sentence_two = (
+            f"Additional work advanced {focus[2][0]} with {focus[2][1]}."
+            if len(focus) >= 3
+            else ""
+        )
+
+    sentences = " ".join(sentence for sentence in [sentence_one, sentence_two] if sentence)
+    stats = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+    return f"{sentences} {stats}".strip()
 
 
 def highlight_focus_count(scope: str) -> int:
@@ -1241,15 +1346,41 @@ def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = T
             "focusing on continuous maintenance, documentation, and automated testing to ensure a robust ecosystem.\n"
         )
 
-    deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 2)
-    if len(deliverables) < 1:
-        deliverables.extend(extract_public_commit_deliverables(summary.get("top_commits", []), 2))
+    total_commits = summary.get("total_commits", 0)
+    merged_prs = summary.get("merged_prs", 0)
+    if total_commits >= 40 or merged_prs >= 6:
+        limit = 5
+    elif total_commits >= 25 or merged_prs >= 4:
+        limit = 4
+    elif total_commits >= 12 or merged_prs >= 2:
+        limit = 3
+    else:
+        limit = 2
+
+    deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), limit)
+    if len(deliverables) < limit:
+        deliverables.extend(
+            extract_public_commit_deliverables(summary.get("top_commits", []), limit - len(deliverables))
+        )
     deliverables = dedupe_prefixes(deliverables)
-    deliverable = deliverables[0] if deliverables else "Improved core infrastructure for better performance"
-    deliverable = ensure_public_verb(enrich_public_deliverable(deliverable, "", repo_name))
-    deliverable = rewrite_public_jargon(deliverable, repo_name)
-    deliverable = diversify_public_verb(deliverable, repo_name)
-    return f"* [{repo_name}] {deliverable}.\n"
+    if not deliverables:
+        deliverables = ["Improved core infrastructure for better performance"]
+
+    cleaned_items = []
+    for item in deliverables[:limit]:
+        cleaned = ensure_public_verb(enrich_public_deliverable(item, "", repo_name))
+        cleaned = rewrite_public_jargon(cleaned, repo_name)
+        cleaned = diversify_public_verb(cleaned, repo_name)
+        cleaned_items.append(cleaned)
+
+    if not cleaned_items:
+        return ""
+
+    summary_sentence = f"{cleaned_items[0]}."
+    bullets = [f"* {item}." for item in cleaned_items[1:]]
+    if bullets:
+        return summary_sentence + "\n" + "\n".join(bullets) + "\n"
+    return summary_sentence + "\n"
 
 
 def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
@@ -1503,6 +1634,8 @@ def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]]
 def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits: int, total_prs: int, total_repos: int, date_range: Optional[dict] = None) -> str:
     """Generate engaging highlight using AI for public reports."""
     if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
+        if report_type == "technical":
+            return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
     try:
@@ -1560,9 +1693,11 @@ Authoritative, dry, objective, and evidence-based. Focus on "What" and "How."
 [Constraints]
 1. Header: "Tokamak Network Technical Report: [Date Range]"
 2. Highlight:
-   - Summarize the top technical achievements for this sprint.
+   - Write 2 concise sentences describing the most significant technical progress.
    - Use engineering language (e.g., refined ZK circuits, hardened bridge security, optimized backend concurrency).
+   - After the 2 sentences, include a short numeric summary: "Total: X commits, Y merged PRs across Z repositories.".
    - Keep the tone dry, professional, and concise.
+   - Output only the highlight text (no title, no bullets, no section headers).
 3. Content Grouping:
    - Group 2.2: ZKP Private Channels (Ooo)
    - Group 2.3: Staking & Governance (Eco)
@@ -1584,9 +1719,15 @@ Key development areas:
 """
 
         response = generate_with_llm(prompt, max_tokens=400)
-        return response or generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
+        if response:
+            return response
+        if report_type == "technical":
+            return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
+        return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
     except Exception as e:
+        if report_type == "technical":
+            return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
 
