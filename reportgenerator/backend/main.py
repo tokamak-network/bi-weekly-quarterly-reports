@@ -843,20 +843,31 @@ def format_public_highlight_items(items: List[str]) -> str:
     return ", ".join(cleaned_items)
 
 
+def highlight_focus_count(scope: str) -> int:
+    return {
+        "biweekly": 3,
+        "monthly": 4,
+        "quarterly": 5,
+    }.get(scope, 3)
+
+
 def generate_public_highlight(
     summaries: Dict[str, Dict[str, Any]],
     total_commits: int,
     total_prs: int,
+    scope: str,
 ) -> str:
     entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
     highlights: List[Tuple[str, str]] = []
-    for repo_name, summary in entries[:5]:
+    focus_count = highlight_focus_count(scope)
+    narrative_limit = max(4, focus_count + 1)
+    for repo_name, summary in entries[:max(6, narrative_limit + 1)]:
         deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 1)
         if not deliverables:
             deliverables = extract_public_commit_deliverables(summary.get("top_commits", []), 1)
         if deliverables:
             highlights.append((repo_name, deliverables[0]))
-        if len(highlights) >= 4:
+        if len(highlights) >= narrative_limit:
             break
 
     if not highlights:
@@ -867,7 +878,7 @@ def generate_public_highlight(
 
     narrative = format_public_highlight_items([item for _, item in highlights])
     focus_pairs = []
-    for repo_name, item in highlights[:3]:
+    for repo_name, item in highlights[:focus_count]:
         cleaned = rewrite_public_jargon(item, repo_name)
         cleaned = ensure_public_verb(enrich_public_deliverable(cleaned, "", repo_name))
         focus_pairs.append((repo_name, strip_verb(cleaned)))
@@ -1794,7 +1805,7 @@ async def generate_report(
             )
         else:
             if report_type == "public":
-                highlight = generate_public_highlight(summaries, total_commits, total_prs)
+                highlight = generate_public_highlight(summaries, total_commits, total_prs, scope)
             else:
                 highlight = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
 
