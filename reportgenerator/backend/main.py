@@ -20,6 +20,13 @@ except ImportError:
     anthropic = None  # type: ignore
     HAS_ANTHROPIC = False
 
+try:
+    from openai import OpenAI  # type: ignore
+    HAS_OPENAI = True
+except ImportError:
+    OpenAI = None  # type: ignore
+    HAS_OPENAI = False
+
 app = FastAPI(title="Biweekly Report Generator API")
 
 # CORS for Next.js frontend
@@ -100,6 +107,55 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
     "title": "Individual Contributions",
     "context": "Individual project progress that complements the main initiatives.",
 }
+
+
+TOKAMAK_BASE_URL = os.environ.get("TOKAMAK_BASE_URL", "https://api.ai.tokamak.network")
+TOKAMAK_API_KEY = os.environ.get("TOKAMAK_API_KEY", "")
+TOKAMAK_MODEL = os.environ.get("TOKAMAK_MODEL", "gpt-5.2-pro")
+
+
+def has_tokamak_client() -> bool:
+    return bool(TOKAMAK_API_KEY) and HAS_OPENAI and OpenAI is not None
+
+
+def generate_with_tokamak(prompt: str, max_tokens: int) -> Optional[str]:
+    if not has_tokamak_client() or OpenAI is None:
+        return None
+    client = OpenAI(base_url=TOKAMAK_BASE_URL, api_key=TOKAMAK_API_KEY)
+    try:
+        response = client.chat.completions.create(
+            model=TOKAMAK_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.4,
+        )
+        content = response.choices[0].message.content if response.choices else None
+        return content.strip() if content else None
+    except Exception:
+        return None
+
+
+def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
+    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+        return None
+    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4.5",
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = getattr(response.content[0], "text", "").strip()
+        return text or None
+    except Exception:
+        return None
+
+
+def generate_with_llm(prompt: str, max_tokens: int) -> Optional[str]:
+    tokamak_response = generate_with_tokamak(prompt, max_tokens)
+    if tokamak_response:
+        return tokamak_response
+    return generate_with_anthropic(prompt, max_tokens)
 
 
 def get_project_for_repo(repo_name: str) -> Optional[str]:
@@ -581,6 +637,36 @@ def publicize_deliverable(text: str) -> str:
     return f"{verb} {cleaned[0].lower() + cleaned[1:]}"
 
 
+def ensure_public_verb(text: str) -> str:
+    if not text:
+        return text
+    lower = text.lower()
+    if lower.startswith(("launched ", "improved ", "secured ", "expanded ", "streamlined ", "delivered ")):
+        return text
+    return f"Improved {text[0].lower() + text[1:]}"
+
+
+def enrich_public_deliverable(text: str, project: str) -> str:
+    if not text:
+        return text
+
+    lower = text.lower()
+    if "setup" in lower and "bug" in lower:
+        return "Secured the setup flow to reduce onboarding friction"
+    if all(token in lower for token in ["usdt", "usdc", "ton"]):
+        return "Expanded supported assets (USDT, USDC, TON) for private transfers"
+
+    if len(text.split()) < 4:
+        fallback = {
+            "Ooo": "Improved privacy and transaction safety for users",
+            "Eco": "Improved staking and governance experience for participants",
+            "TRH": "Improved deployment reliability for rollup builders",
+        }
+        return fallback.get(project, "Improved user-facing experience")
+
+    return text
+
+
 def extract_public_pr_deliverables(prs: List[Dict[str, Any]], limit: int) -> List[str]:
     seen: Set[str] = set()
     deliverables: List[str] = []
@@ -738,10 +824,9 @@ def generate_full_report_with_ai(
     total_prs: int,
     total_repos: int,
 ) -> Optional[str]:
-    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+    if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
         return None
 
-    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     start = date_range.get("start") or "N/A"
     end = date_range.get("end") or "N/A"
     raw_data = build_raw_data_input(summaries, individual_summaries, report_type)
@@ -799,15 +884,7 @@ Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repo
 {raw_data}
 """
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4.5",
-            max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return getattr(response.content[0], "text", "").strip() or None
-    except Exception:
-        return None
+    return generate_with_llm(prompt, max_tokens=2000)
 
 
 def simplify_message_public(message: str) -> str:
@@ -902,9 +979,8 @@ def generate_public_section(project: str, summary: dict, use_ai: bool = True) ->
 
 def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
     """Generate technical section using Claude API."""
-    if anthropic is None:
+    if not has_tokamak_client() and anthropic is None:
         return generate_basic_technical(project, summary, info)
-    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
         f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), True)} (sha: {c['sha']})"
@@ -947,23 +1023,16 @@ Merged PRs:
 {pr_list}
 """
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4.5",
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        bullets = getattr(response.content[0], "text", "").strip()
-        return f"{bullets}\n"
-    except Exception as e:
+    bullets = generate_with_llm(prompt, max_tokens=1500)
+    if not bullets:
         return generate_basic_technical(project, summary, info)
+    return f"{bullets}\n"
 
 
 def generate_with_ai_public(project: str, summary: dict, info: dict) -> str:
     """Generate public section using Claude API."""
-    if anthropic is None:
+    if not has_tokamak_client() and anthropic is None:
         return generate_basic_public(project, summary, info)
-    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     commit_list = "\n".join([
         f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), False)}"
@@ -1002,16 +1071,10 @@ Recent commits (for context only):
 {commit_list}
 """
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4.5",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        bullets = getattr(response.content[0], "text", "").strip()
-        return f"{bullets}\n"
-    except Exception as e:
+    bullets = generate_with_llm(prompt, max_tokens=1000)
+    if not bullets:
         return generate_basic_public(project, summary, info)
+    return f"{bullets}\n"
 
 
 def generate_basic_technical(project: str, summary: dict, info: dict) -> str:
@@ -1041,7 +1104,8 @@ def generate_basic_public(project: str, summary: dict, info: dict) -> str:
     deliverables = deliverables[:3]
     bullets = [f"* {intro}."]
     if deliverables:
-        bullets.extend([f"* {item}." for item in deliverables])
+        cleaned = [ensure_public_verb(enrich_public_deliverable(item, project)) for item in deliverables]
+        bullets.extend([f"* {item}." for item in cleaned])
     else:
         bullets.append("* Delivered steady progress on core initiatives.")
 
@@ -1058,9 +1122,8 @@ def generate_individual_section(member_label: str, summary: dict, report_type: s
 
 
 def generate_with_ai_individual(member_label: str, summary: dict, info: dict, report_type: str) -> str:
-    if anthropic is None:
+    if not has_tokamak_client() and anthropic is None:
         return generate_basic_individual(member_label, summary, info, report_type)
-    client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
 
     technical = report_type == "technical"
     commit_list = "\n".join([
@@ -1109,16 +1172,10 @@ Generate 4-6 bullet points:
 
 Output only the bullet points."""
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4.5",
-            max_tokens=1200,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        bullets = getattr(response.content[0], "text", "").strip()
-        return f"{bullets}\n"
-    except Exception:
+    bullets = generate_with_llm(prompt, max_tokens=1200)
+    if not bullets:
         return generate_basic_individual(member_label, summary, info, report_type)
+    return f"{bullets}\n"
 
 
 def generate_basic_individual(member_label: str, summary: dict, info: dict, report_type: str) -> str:
@@ -1170,12 +1227,10 @@ def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]]
 
 def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits: int, total_prs: int, total_repos: int, date_range: Optional[dict] = None) -> str:
     """Generate engaging highlight using AI for public reports."""
-    if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+    if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
     try:
-        client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
-
         # Gather key achievements from each project
         achievements = []
         for project, summary in summaries.items():
@@ -1252,12 +1307,8 @@ Key development areas:
 {chr(10).join(achievements)}
 """
 
-        response = client.messages.create(
-            model="claude-sonnet-4.5",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return getattr(response.content[0], "text", "").strip()
+        response = generate_with_llm(prompt, max_tokens=400)
+        return response or generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
 
     except Exception as e:
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
@@ -1452,6 +1503,7 @@ async def health_check():
     return {
         "status": "healthy",
         "anthropic_available": HAS_ANTHROPIC,
+        "tokamak_available": has_tokamak_client(),
         "api_key_set": bool(os.environ.get('ANTHROPIC_API_KEY')),
     }
 
