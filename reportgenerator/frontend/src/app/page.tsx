@@ -74,6 +74,8 @@ export default function Home() {
   const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [includeIndividuals, setIncludeIndividuals] = useState(true)
+  const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
+  const [repoLimit, setRepoLimit] = useState('0')
   const [activeView, setActiveView] = useState<'preview' | 'raw'>('preview')
   const [loading, setLoading] = useState(false)
   const [generated, setGenerated] = useState(false)
@@ -92,6 +94,7 @@ export default function Home() {
   const [reportTitle, setReportTitle] = useState<string | null>(null)
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
   const [fullReport, setFullReport] = useState<string | null>(null)
+  const [repoMeta, setRepoMeta] = useState<{ applied: boolean; total: number; shown: number } | null>(null)
 
   const detectedDays = useMemo(() => {
     if (detectedDaysOverride) return detectedDaysOverride
@@ -126,6 +129,8 @@ export default function Home() {
       formData.append('include_individuals', includeIndividuals.toString())
       formData.append('project_filter', 'all')
       formData.append('member_filter', 'all')
+      formData.append('report_grouping', reportGrouping)
+      formData.append('repo_limit', repoLimit)
 
       const response = await fetch('http://localhost:8000/api/generate', {
         method: 'POST',
@@ -164,6 +169,15 @@ export default function Home() {
       setSections(reportSections)
       setFullReport(fullReportContent)
       setRawMarkdown(rawContent)
+      setRepoMeta(
+        data.report_grouping === 'repository'
+          ? {
+              applied: Boolean(data.repo_limit_applied),
+              total: data.repo_count_total ?? 0,
+              shown: data.repo_count_shown ?? 0,
+            }
+          : null
+      )
       setStats({
         commits: data.stats?.total_commits ?? 0,
         repos: data.stats?.total_repos ?? 0,
@@ -424,6 +438,58 @@ export default function Home() {
                     />
                   </button>
                 </div>
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">Report grouping</div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose repository-based or project-based sections.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setReportGrouping('repository')}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        reportGrouping === 'repository'
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      Repository
+                    </button>
+                    <button
+                      onClick={() => setReportGrouping('project')}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                        reportGrouping === 'project'
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      Project
+                    </button>
+                  </div>
+                </div>
+                {reportGrouping === 'repository' && (
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">Repository limit</div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Set 0 to include all. Use a smaller number to group remaining repos.
+                      </p>
+                      {repoMeta && (
+                        <p className="mt-2 text-xs font-medium text-gray-600">
+                          Showing {repoMeta.shown} of {repoMeta.total} repos{repoMeta.applied ? ' (others grouped)' : ''}
+                        </p>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={repoLimit}
+                      onChange={(event) => setRepoLimit(event.target.value)}
+                      className="w-20 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none"
+                    />
+                  </div>
+                )}
               </div>
 
               <button

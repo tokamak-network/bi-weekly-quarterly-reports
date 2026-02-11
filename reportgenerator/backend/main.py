@@ -32,7 +32,12 @@ app = FastAPI(title="Biweekly Report Generator API")
 # CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -192,8 +197,9 @@ class ActivityGroup(TypedDict):
 
 
 def parse_csv_content(content: str) -> dict:
-    """Parse CSV content and return GitHub activities grouped by project and member."""
+    """Parse CSV content and return GitHub activities grouped by project, repo, and member."""
     project_data: defaultdict[str, ActivityGroup] = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
+    repo_data: defaultdict[str, ActivityGroup] = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
     individual_data: defaultdict[str, ActivityGroup] = defaultdict(lambda: {"commits": [], "prs": [], "repos": set()})
     members: Dict[str, Dict[str, str]] = {}
     timestamps: List[datetime] = []
@@ -234,6 +240,9 @@ def parse_csv_content(content: str) -> dict:
         deletions = row.get('deletions', '0') or '0'
         state = row.get('state', '').strip('"')
 
+        repo_target = repo_data[repo]
+        repo_target["repos"].add(repo)
+
         if project:
             target = project_data[project]
         else:
@@ -246,7 +255,7 @@ def parse_csv_content(content: str) -> dict:
         if entry_type == 'commit' and message:
             if message.lower().startswith('merge '):
                 continue
-            target["commits"].append({
+            entry = {
                 "repo": repo,
                 "message": message.split('\n')[0][:200],
                 "sha": sha[:8] if sha else "",
@@ -254,16 +263,20 @@ def parse_csv_content(content: str) -> dict:
                 "additions": int(additions),
                 "deletions": int(deletions),
                 "member_id": member_id,
-            })
+            }
+            target["commits"].append(entry)
+            repo_target["commits"].append(entry)
         elif entry_type == 'pull_request' and title:
-            target["prs"].append({
+            entry = {
                 "repo": repo,
                 "title": title,
                 "pr_number": pr_number,
                 "state": state,
                 "timestamp": timestamp,
                 "member_id": member_id,
-            })
+            }
+            target["prs"].append(entry)
+            repo_target["prs"].append(entry)
 
     def serialize_group(data_map: Dict[str, ActivityGroup]) -> Dict[str, Dict[str, Any]]:
         result: Dict[str, Dict[str, Any]] = {}
@@ -277,6 +290,7 @@ def parse_csv_content(content: str) -> dict:
 
     return {
         "projects": serialize_group(project_data),
+        "repos": serialize_group(repo_data),
         "individuals": serialize_group(individual_data),
         "members": list(members.values()),
         "timestamps": timestamps,
@@ -405,11 +419,13 @@ def build_report_headline(summaries: Dict[str, Dict[str, Any]], report_type: str
     return f"{themes['Ooo']}, {themes['Eco']}, and {themes['TRH']} Progress"
 
 
-def prepare_summary(project: str, data: dict) -> dict:
-    """Prepare summary for a project."""
+def prepare_summary(project: str, data: Dict[str, Any]) -> dict:
+    """Prepare summary for a project or repository."""
     commits = data['commits']
     prs = data['prs']
     repos = data['repos']
+    if isinstance(repos, set):
+        repos = list(repos)
 
     commits_sorted = sorted(commits, key=lambda x: x['additions'] + x['deletions'], reverse=True)
 
@@ -434,6 +450,10 @@ def prepare_summary(project: str, data: dict) -> dict:
         "top_commits": top_commits,
         "merged_pr_list": merged_prs[:15],
     }
+
+
+def repo_sort_key(summary: dict) -> tuple:
+    return (summary.get("total_commits", 0), summary.get("merged_prs", 0), len(summary.get("repos", [])))
 
 
 def simplify_message(message: str) -> str:
@@ -605,6 +625,46 @@ def choose_public_verb(text: str) -> str:
     return verbs[sum(ord(c) for c in text) % len(verbs)]
 
 
+def target_from_repo(repo_name: str) -> str:
+    name = repo_name.lower()
+    if "staking" in name:
+        return "staking experience"
+    if "dao" in name or "governance" in name:
+        return "governance workflows"
+    if "rollup" in name or "hub" in name:
+        return "rollup deployment flows"
+    if "wallet" in name or "snap" in name:
+        return "wallet experience"
+    if "sdk" in name:
+        return "developer tooling"
+    if "infra" in name or "node" in name:
+        return "infrastructure reliability"
+    return "user experience"
+
+
+def rewrite_public_jargon(text: str, repo_name: str = "") -> str:
+    replacements = [
+        (r"\b(ui fixes?|translations?)\b", "Improved user accessibility and localization"),
+        (r"\bbug fixes?\b|\brefactor(ing)?\b", "Enhanced system stability and code reliability"),
+        (r"\bbackend updates?\b", "Strengthened core infrastructure for better performance"),
+        (r"\bwallet experience\b", "Refined secure transaction workflows for users"),
+        (r"\bfiles? via upload\b", "Archived historical records"),
+        (r"\babis? files?\b", "contract interfaces"),
+        (r"restructure to pnpm|pnpm monorepo", "optimized development environment"),
+    ]
+    updated = text
+    for pattern, replacement in replacements:
+        updated = re.sub(pattern, replacement, updated, flags=re.IGNORECASE)
+    if repo_name:
+        updated = re.sub(
+            r"Improved user-facing experience",
+            f"Improved {target_from_repo(repo_name)}",
+            updated,
+            flags=re.IGNORECASE,
+        )
+    return updated
+
+
 def publicize_deliverable(text: str) -> str:
     cleaned = normalize_public_phrase(text)
     lower = cleaned.lower()
@@ -646,7 +706,7 @@ def ensure_public_verb(text: str) -> str:
     return f"Improved {text[0].lower() + text[1:]}"
 
 
-def enrich_public_deliverable(text: str, project: str) -> str:
+def enrich_public_deliverable(text: str, project: str, repo_name: str = "") -> str:
     if not text:
         return text
 
@@ -662,9 +722,134 @@ def enrich_public_deliverable(text: str, project: str) -> str:
             "Eco": "Improved staking and governance experience for participants",
             "TRH": "Improved deployment reliability for rollup builders",
         }
+        if repo_name:
+            return f"Improved {target_from_repo(repo_name)}"
         return fallback.get(project, "Improved user-facing experience")
 
     return text
+
+
+def derive_public_theme(summaries: Dict[str, Dict[str, Any]]) -> str:
+    keyword_patterns = [
+        ("Staking", ["staking", "validator", "delegate", "seig", "reward", "vton"]),
+        ("Governance", ["governance", "dao", "voting", "proposal"]),
+        ("Privacy", ["privacy", "zk", "proof", "confidential", "private"]),
+        ("Wallet", ["wallet", "snap", "extension"]),
+        ("Infrastructure", ["infrastructure", "node", "deployment", "rollup", "hub", "sdk"]),
+        ("Performance", ["optimiz", "performance", "throughput", "latency"]),
+        ("Security", ["security", "secure", "harden", "safety", "validation"]),
+    ]
+
+    deliverables: List[str] = []
+    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    for _, summary in entries[:3]:
+        deliverables.extend(extract_public_pr_deliverables(summary.get("merged_pr_list", []), 2))
+        if len(deliverables) < 4:
+            deliverables.extend(extract_public_commit_deliverables(summary.get("top_commits", []), 2))
+
+    joined = " ".join(deliverables).lower()
+    themes = []
+    for label, needles in keyword_patterns:
+        if any(needle in joined for needle in needles):
+            themes.append(label)
+
+    if themes:
+        unique = []
+        for theme in themes:
+            if theme not in unique:
+                unique.append(theme)
+        return ", ".join(unique[:3])
+    return "Ecosystem Progress"
+
+
+def pick_public_achievement(summaries: Dict[str, Dict[str, Any]]) -> str:
+    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    for _, summary in entries[:3]:
+        deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 1)
+        if not deliverables:
+            deliverables = extract_public_commit_deliverables(summary.get("top_commits", []), 1)
+        if deliverables:
+            item = ensure_public_verb(enrich_public_deliverable(deliverables[0], ""))
+            item = rewrite_public_jargon(item)
+            return item
+    return "Strengthened the ecosystem through focused delivery"
+
+
+def strip_verb(text: str) -> str:
+    return re.sub(
+        r"^(Launched|Released|Secured|Hardened|Optimized|Streamlined|Integrated|Improved)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def resolve_verb_conflicts(text: str) -> str:
+    if not text:
+        return text
+    improved_fix = re.match(r"^Improved\s+(.+?)\s+fix(?:ing|ed)?\s+(.+)$", text, flags=re.IGNORECASE)
+    if improved_fix:
+        subject = improved_fix.group(1).strip()
+        cause = improved_fix.group(2).strip()
+        return f"Improved {subject} by resolving {cause}"
+    match = re.match(r"^(Launched|Released|Secured|Hardened|Optimized|Streamlined|Integrated|Improved)\b", text, flags=re.IGNORECASE)
+    if not match:
+        return text
+    verb = match.group(1)
+    remainder = re.sub(
+        r"\b(Launched|Released|Secured|Hardened|Optimized|Streamlined|Integrated|Improved)\b\s+",
+        "",
+        text[len(verb):],
+        flags=re.IGNORECASE,
+    ).strip()
+    return f"{verb} {remainder}".strip()
+
+
+def format_public_highlight_items(items: List[str]) -> str:
+    cleaned_items = []
+    for item in items:
+        text = rewrite_public_jargon(item)
+        text = ensure_public_verb(text)
+        text = re.sub(r"^(Improved|Launched|Secured|Expanded|Streamlined)\s+\1\b", r"\1", text, flags=re.IGNORECASE)
+        text = resolve_verb_conflicts(text)
+        cleaned_items.append(text)
+    return ", ".join(cleaned_items)
+
+
+def generate_public_highlight(
+    summaries: Dict[str, Dict[str, Any]],
+    total_commits: int,
+    total_prs: int,
+) -> str:
+    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    highlights: List[Tuple[str, str]] = []
+    for repo_name, summary in entries[:5]:
+        deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 1)
+        if not deliverables:
+            deliverables = extract_public_commit_deliverables(summary.get("top_commits", []), 1)
+        if deliverables:
+            highlights.append((repo_name, deliverables[0]))
+        if len(highlights) >= 4:
+            break
+
+    if not highlights:
+        return (
+            f"이번 기간 동안 토카막 네트워크는 **{total_commits}**개의 기여와 "
+            f"**{total_prs}**개의 병합된 제안을 통해 핵심 생태계 역량을 강화했습니다."
+        )
+
+    narrative = format_public_highlight_items([item for _, item in highlights])
+    focus_pairs = []
+    for repo_name, item in highlights[:3]:
+        cleaned = rewrite_public_jargon(item, repo_name)
+        cleaned = ensure_public_verb(enrich_public_deliverable(cleaned, "", repo_name))
+        focus_pairs.append((repo_name, strip_verb(cleaned)))
+    focus_sentence = ", ".join(f"{repo}의 {phrase}" for repo, phrase in focus_pairs)
+    return (
+        f"이번 기간 동안 토카막은 {narrative}를 달성하며 다음 단계로 나아갔습니다. "
+        f"특히 {focus_sentence}에서 드러난 진전이 이번 회차의 방향성을 보여줍니다. "
+        f"이번 회차의 핵심은 {focus_sentence}로 요약됩니다."
+    )
 
 
 def extract_public_pr_deliverables(prs: List[Dict[str, Any]], limit: int) -> List[str]:
@@ -776,28 +961,48 @@ def build_raw_data_input(
     summaries: Dict[str, Dict[str, Any]],
     individual_summaries: Dict[str, Dict[str, Any]],
     report_type: str,
+    report_grouping: str,
 ) -> str:
     technical = report_type == "technical"
     lines: List[str] = []
-    for project_key in ["Ooo", "Eco", "TRH"]:
-        summary = summaries.get(project_key)
-        if not summary:
-            continue
-        lines.append(f"Project: {project_key}")
-        lines.append(f"Repositories: {', '.join(summary.get('repos', []))}")
-        lines.append("Top commits:")
-        for commit in summary.get("top_commits", [])[:15]:
-            repo = commit.get("repo", "")
-            msg = sanitize_initial_commit(commit.get("message", ""), repo, technical)
-            sha = commit.get("sha", "")
-            lines.append(f"- [{repo}] {msg} (sha: {sha})")
-        lines.append("Merged PRs:")
-        for pr in summary.get("merged_pr_list", [])[:10]:
-            repo = pr.get("repo", "")
-            number = pr.get("pr_number", "")
-            title = sanitize_initial_commit(pr.get("title", ""), repo, technical)
-            lines.append(f"- [{repo}] PR#{number}: {title}")
-        lines.append("")
+
+    if report_grouping == "repository":
+        entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+        for repo_name, summary in entries[:12]:
+            lines.append(f"Repository: {repo_name}")
+            lines.append("Top commits:")
+            for commit in summary.get("top_commits", [])[:12]:
+                repo = commit.get("repo", "")
+                msg = sanitize_initial_commit(commit.get("message", ""), repo, technical)
+                sha = commit.get("sha", "")
+                lines.append(f"- [{repo}] {msg} (sha: {sha})")
+            lines.append("Merged PRs:")
+            for pr in summary.get("merged_pr_list", [])[:8]:
+                repo = pr.get("repo", "")
+                number = pr.get("pr_number", "")
+                title = sanitize_initial_commit(pr.get("title", ""), repo, technical)
+                lines.append(f"- [{repo}] PR#{number}: {title}")
+            lines.append("")
+    else:
+        for project_key in ["Ooo", "Eco", "TRH"]:
+            summary = summaries.get(project_key)
+            if not summary:
+                continue
+            lines.append(f"Project: {project_key}")
+            lines.append(f"Repositories: {', '.join(summary.get('repos', []))}")
+            lines.append("Top commits:")
+            for commit in summary.get("top_commits", [])[:15]:
+                repo = commit.get("repo", "")
+                msg = sanitize_initial_commit(commit.get("message", ""), repo, technical)
+                sha = commit.get("sha", "")
+                lines.append(f"- [{repo}] {msg} (sha: {sha})")
+            lines.append("Merged PRs:")
+            for pr in summary.get("merged_pr_list", [])[:10]:
+                repo = pr.get("repo", "")
+                number = pr.get("pr_number", "")
+                title = sanitize_initial_commit(pr.get("title", ""), repo, technical)
+                lines.append(f"- [{repo}] PR#{number}: {title}")
+            lines.append("")
 
     if individual_summaries:
         lines.append("Contributors:")
@@ -823,13 +1028,14 @@ def generate_full_report_with_ai(
     total_commits: int,
     total_prs: int,
     total_repos: int,
+    report_grouping: str,
 ) -> Optional[str]:
     if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
         return None
 
     start = date_range.get("start") or "N/A"
     end = date_range.get("end") or "N/A"
-    raw_data = build_raw_data_input(summaries, individual_summaries, report_type)
+    raw_data = build_raw_data_input(summaries, individual_summaries, report_type, report_grouping)
 
     if report_type == "technical":
         prompt = f"""[Role]
@@ -975,6 +1181,36 @@ def generate_public_section(project: str, summary: dict, use_ai: bool = True) ->
         return generate_with_ai_public(project, summary, info)
 
     return generate_basic_public(project, summary, info)
+
+
+def generate_repo_technical_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
+    info = {
+        "number": "",
+        "title": repo_name,
+        "context": f"Repository activity summary for {repo_name}.",
+        "overview_url": f"https://github.com/tokamak-network/{repo_name}",
+    }
+    if use_ai and (has_tokamak_client() or (HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'))):
+        return generate_with_ai_technical(repo_name, summary, info)
+    return generate_basic_technical(repo_name, summary, info)
+
+
+def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
+    if repo_name == "Other repos":
+        remaining = len(summary.get("repos", []))
+        return (
+            f"* Other Active Developments: Managed consistent updates across {remaining} other repositories, "
+            "focusing on continuous maintenance, documentation, and automated testing to ensure a robust ecosystem.\n"
+        )
+
+    deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 2)
+    if len(deliverables) < 1:
+        deliverables.extend(extract_public_commit_deliverables(summary.get("top_commits", []), 2))
+    deliverables = dedupe_prefixes(deliverables)
+    deliverable = deliverables[0] if deliverables else "Improved core infrastructure for better performance"
+    deliverable = ensure_public_verb(enrich_public_deliverable(deliverable, "", repo_name))
+    deliverable = rewrite_public_jargon(deliverable, repo_name)
+    return f"* [{repo_name}] {deliverable}.\n"
 
 
 def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
@@ -1285,8 +1521,9 @@ Authoritative, dry, objective, and evidence-based. Focus on "What" and "How."
 [Constraints]
 1. Header: "Tokamak Network Technical Report: [Date Range]"
 2. Highlight:
-   - State total commit count and PRs merged.
-   - Summarize architectural shifts or performance improvements in 3 points.
+   - Summarize the top technical achievements for this sprint.
+   - Use engineering language (e.g., refined ZK circuits, hardened bridge security, optimized backend concurrency).
+   - Keep the tone dry, professional, and concise.
 3. Content Grouping:
    - Group 2.2: ZKP Private Channels (Ooo)
    - Group 2.3: Staking & Governance (Eco)
@@ -1361,6 +1598,8 @@ async def generate_report(
     project_filter: str = Form("all"),
     member_filter: str = Form("all"),
     include_individuals: bool = Form(True),
+    report_grouping: str = Form("project"),
+    repo_limit: int = Form(0),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -1369,31 +1608,71 @@ async def generate_report(
 
         parsed = parse_csv_content(content_str)
         project_data = parsed["projects"]
+        repo_data = parsed["repos"]
         individual_data = parsed["individuals"]
         members = parsed["members"]
 
-        if not project_data and not individual_data:
+        if not project_data and not repo_data and not individual_data:
             raise HTTPException(status_code=400, detail="No valid GitHub data found in CSV")
 
         detected_scope, start_date, end_date, days = detect_scope_from_timestamps(parsed["timestamps"])
         scope = detected_scope if report_scope == "auto" else report_scope
 
         # Prepare summaries
-        summaries = {}
+        summaries: Dict[str, Dict[str, Any]] = {}
         project_keys = ["Ooo", "Eco", "TRH"]
         if project_filter != "all":
             project_keys = [project_filter]
 
-        for project in project_keys:
-            if project in project_data:
-                summary = prepare_summary(project, project_data[project])
+        repo_count_total = 0
+        repo_count_shown = 0
+        repo_limit_applied = False
+
+        if report_grouping == "repository":
+            repo_entries = []
+            for repo_name, repo_payload in repo_data.items():
+                summary = prepare_summary(repo_name, repo_payload)
                 summary["start_date"] = start_date
                 summary["end_date"] = end_date
-                summaries[project] = summary
+                repo_entries.append((repo_name, summary))
+
+            repo_entries.sort(key=lambda item: repo_sort_key(item[1]), reverse=True)
+            repo_count_total = len(repo_entries)
+
+            if repo_limit and repo_limit > 0 and len(repo_entries) > repo_limit:
+                selected = repo_entries[:repo_limit]
+                remainder = repo_entries[repo_limit:]
+                remainder_names = {name for name, _ in remainder}
+                other_group: ActivityGroup = {"commits": [], "prs": [], "repos": set()}
+                for repo_name in remainder_names:
+                    payload = repo_data.get(repo_name)
+                    if not payload:
+                        continue
+                    other_group["commits"].extend(payload.get("commits", []))
+                    other_group["prs"].extend(payload.get("prs", []))
+                    other_group["repos"].update(payload.get("repos", []))
+                summaries = {name: summary for name, summary in selected}
+                if other_group["commits"] or other_group["prs"]:
+                    other_summary = prepare_summary("Other repos", dict(other_group))
+                    other_summary["start_date"] = start_date
+                    other_summary["end_date"] = end_date
+                    summaries["Other repos"] = other_summary
+                repo_count_shown = len(summaries)
+                repo_limit_applied = True
+            else:
+                summaries = {name: summary for name, summary in repo_entries}
+                repo_count_shown = len(summaries)
+        else:
+            for project in project_keys:
+                if project in project_data:
+                    summary = prepare_summary(project, project_data[project])
+                    summary["start_date"] = start_date
+                    summary["end_date"] = end_date
+                    summaries[project] = summary
 
         individual_summaries = {}
         member_lookup = {m["id"]: m for m in members}
-        if include_individuals and scope in {"monthly", "biweekly"}:
+        if report_grouping != "repository" and include_individuals and scope in {"monthly", "biweekly"}:
             selected_members = list(individual_data.keys())
             if member_filter != "all":
                 selected_members = [member_filter] if member_filter in individual_data else []
@@ -1431,25 +1710,38 @@ async def generate_report(
                 total_commits,
                 total_prs,
                 total_repos,
+                report_grouping,
             )
 
         # Generate sections
         sections = []
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
 
-        for project in project_keys:
-            if project in summaries:
+        if report_grouping == "repository":
+            for repo_name, summary in summaries.items():
                 if report_type == "technical":
-                    section = generate_technical_section(project, summaries[project], use_ai)
+                    section = generate_repo_technical_section(repo_name, summary, use_ai)
                 else:
-                    section = generate_public_section(project, summaries[project], use_ai)
+                    section = generate_repo_public_section(repo_name, summary, use_ai)
                 sections.append({
-                    "project": project,
-                    "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
+                    "project": repo_name,
+                    "title": repo_name,
                     "content": section,
                 })
+        else:
+            for project in project_keys:
+                if project in summaries:
+                    if report_type == "technical":
+                        section = generate_technical_section(project, summaries[project], use_ai)
+                    else:
+                        section = generate_public_section(project, summaries[project], use_ai)
+                    sections.append({
+                        "project": project,
+                        "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
+                        "content": section,
+                    })
 
-        if include_individuals and scope in {"monthly", "biweekly"}:
+        if report_grouping != "repository" and include_individuals and scope in {"monthly", "biweekly"}:
             section = generate_individuals_section(individual_summaries, report_type, use_ai)
             if section:
                 sections.append({
@@ -1469,12 +1761,16 @@ async def generate_report(
                 {"start": start_date, "end": end_date},
             )
         else:
-            highlight = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+            if report_type == "public":
+                highlight = generate_public_highlight(summaries, total_commits, total_prs)
+            else:
+                highlight = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
 
         return JSONResponse({
             "success": True,
             "report_type": report_type,
             "report_scope": scope,
+            "report_grouping": report_grouping,
             "date_range": {
                 "start": start_date,
                 "end": end_date,
@@ -1485,6 +1781,9 @@ async def generate_report(
                 "total_prs": total_prs,
                 "total_repos": total_repos,
             },
+            "repo_limit_applied": repo_limit_applied,
+            "repo_count_total": repo_count_total,
+            "repo_count_shown": repo_count_shown,
             "highlight": highlight,
             "title": build_report_title(scope, start_date, end_date, days),
             "headline": build_report_headline(summaries, report_type),
