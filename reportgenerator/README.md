@@ -11,6 +11,8 @@ GitHub CSV 데이터를 기반으로 Biweekly 레포트를 생성하는 웹 애�
 - **AI 요약**: Tokamak AI (OpenAI-compatible) 또는 Claude API로 요약 생성
 - **레포트 분류**: Repository 기반(기본) 또는 Project 기반 선택
 - **레포 제한**: 상위 N개 레포 + Other repos 묶기 지원
+- **Public 요약 구조**: 레포별 1줄 요약 + 추가 bullet 혼합, 활동량에 따라 2~5줄 자동 확장
+- **Technical 하이라이트**: 서술형 2문장 + 활동 요약 숫자 표시
 - **다양한 형식으로 다운로드**: MD, CSV, TSV
 
 ## 프로젝트 구조
