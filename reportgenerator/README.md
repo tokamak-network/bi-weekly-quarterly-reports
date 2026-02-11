@@ -8,7 +8,9 @@ GitHub CSV 데이터를 기반으로 Biweekly 레포트를 생성하는 웹 애�
 - **레포트 타입 선택**:
   - **Public/Investor**: 투자자, 파트너, 커뮤니티 대상 비기술적 레포트
   - **Technical**: 개발자 대상 기술 레포트 (GitHub 링크 포함)
-- **AI 요약**: Claude API를 사용한 지능형 요약 생성
+- **AI 요약**: Tokamak AI (OpenAI-compatible) 또는 Claude API로 요약 생성
+- **레포트 분류**: Repository 기반(기본) 또는 Project 기반 선택
+- **레포 제한**: 상위 N개 레포 + Other repos 묶기 지원
 - **다양한 형식으로 다운로드**: MD, CSV, TSV
 
 ## 프로젝트 구조
@@ -42,7 +44,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 환경변수 설정 (AI 기능 사용 시)
-export ANTHROPIC_API_KEY="your-api-key"
+export TOKAMAK_API_KEY="your-api-key"
+export TOKAMAK_BASE_URL="https://api.ai.tokamak.network"
+export TOKAMAK_MODEL="gpt-5.2-pro"
+
+# (선택) Anthropic fallback
+export ANTHROPIC_API_KEY="your-claude-key"
 
 # 서버 실행
 python main.py
@@ -64,7 +71,7 @@ npm install
 npm run dev
 ```
 
-프론트엔드는 http://localhost:3000 에서 실행됩니다.
+프론트엔드는 http://localhost:3000 또는 3002 에서 실행됩니다.
 
 ## 사용법
 
@@ -85,6 +92,8 @@ npm run dev
 - `file`: CSV 파일 (multipart/form-data)
 - `report_type`: "technical" 또는 "public"
 - `use_ai`: true/false
+- `report_grouping`: "repository" 또는 "project"
+- `repo_limit`: 0 (전체) 또는 상위 N개
 
 **Response:**
 ```json
@@ -105,16 +114,11 @@ npm run dev
 
 서버 상태 확인
 
-## 프로젝트 분류
-
-| 프로젝트 | 섹션 | 저장소 |
-|----------|------|--------|
-| Ooo | 2.2 Private App Channels | Tokamak-zk-EVM, private-app-channel-manager, ... |
-| Eco | 2.3 Staking & Governance | ton-staking-v2, tokamak-dao-v2, ... |
-| TRH | 2.4 Rollup Hub | trh-sdk, DRB-node, tokamak-thanos, ... |
-
 ## 환경변수
 
 | 변수명 | 설명 | 필수 |
 |--------|------|------|
-| ANTHROPIC_API_KEY | Claude API 키 | AI 기능 사용 시 필수 |
+| TOKAMAK_API_KEY | Tokamak AI API 키 | AI 기능 사용 시 필수 |
+| TOKAMAK_BASE_URL | Tokamak API base URL | 선택 |
+| TOKAMAK_MODEL | Tokamak 모델명 | 선택 |
+| ANTHROPIC_API_KEY | Claude API 키 (fallback) | 선택 |
