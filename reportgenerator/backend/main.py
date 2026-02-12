@@ -897,14 +897,25 @@ def extract_technical_highlight_items(commits: List[Dict[str, Any]], limit: int)
             continue
         if not is_public_deliverable(cleaned):
             continue
-        cleaned = sentence_case(cleaned)
-        cleaned = normalize_technical_highlight_phrase(cleaned)
+        cleaned = normalize_technical_highlight_phrase(sentence_case(cleaned))
         key = cleaned.lower()
         if key in seen:
             continue
         seen.add(key)
         items.append(cleaned)
         if len(items) >= limit:
+            break
+    if not items:
+        for commit in commits:
+            msg = commit.get("message", "")
+            if not msg:
+                continue
+            msg = sanitize_initial_commit(msg, commit.get("repo"), True)
+            cleaned = simplify_message(msg)
+            if not cleaned:
+                continue
+            cleaned = normalize_technical_highlight_phrase(sentence_case(cleaned))
+            items.append(cleaned)
             break
     return items
 
@@ -1098,6 +1109,38 @@ def extract_technical_deliverables(commits: List[Dict[str, Any]], limit: int) ->
         if len(deliverables) >= limit:
             break
     return deliverables
+
+
+def build_project_summary_paragraph(project: str, summary: dict, report_type: str) -> str:
+    commits = summary.get("top_commits", [])
+    merged_prs = summary.get("merged_pr_list", [])
+    items = extract_public_pr_deliverables(merged_prs, 4)
+    if len(items) < 3:
+        items.extend(extract_public_commit_deliverables(commits, 4 - len(items)))
+    items = dedupe_prefixes(items)[:3]
+    if not items:
+        return ""
+
+    cleaned = []
+    for item in items:
+        text = ensure_public_verb(enrich_public_deliverable(item, project))
+        text = rewrite_public_jargon(text)
+        cleaned.append(strip_verb(text))
+
+    clause = ", ".join(cleaned)
+    if report_type == "technical":
+        return f"Core development advanced through {clause}."
+    return f"이번 회차에서 {clause}를 중심으로 진행 상황을 정리했습니다."
+
+
+def build_repo_technical_overview(summary: dict) -> str:
+    commits = summary.get("top_commits", [])
+    items = extract_technical_highlight_items(commits, 2)
+    if not items:
+        return ""
+    if len(items) == 1:
+        return f"{items[0]}."
+    return f"{items[0]} and {items[1]}."
 
 
 def build_raw_data_input(
@@ -1311,9 +1354,14 @@ def generate_technical_section(project: str, summary: dict, use_ai: bool = True)
     info = SECTION_INFO_TECHNICAL[project]
 
     if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
-        return generate_with_ai_technical(project, summary, info)
+        section = generate_with_ai_technical(project, summary, info)
+    else:
+        section = generate_basic_technical(project, summary, info)
 
-    return generate_basic_technical(project, summary, info)
+    overview = build_project_summary_paragraph(project, summary, "technical")
+    if overview:
+        return f"{overview}\n{section}"
+    return section
 
 
 def generate_public_section(project: str, summary: dict, use_ai: bool = True) -> str:
@@ -1321,9 +1369,14 @@ def generate_public_section(project: str, summary: dict, use_ai: bool = True) ->
     info = SECTION_INFO_PUBLIC[project]
 
     if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
-        return generate_with_ai_public(project, summary, info)
+        section = generate_with_ai_public(project, summary, info)
+    else:
+        section = generate_basic_public(project, summary, info)
 
-    return generate_basic_public(project, summary, info)
+    overview = build_project_summary_paragraph(project, summary, "public")
+    if overview:
+        return f"{overview}\n{section}"
+    return section
 
 
 def generate_repo_technical_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
@@ -1334,8 +1387,14 @@ def generate_repo_technical_section(repo_name: str, summary: dict, use_ai: bool 
         "overview_url": f"https://github.com/tokamak-network/{repo_name}",
     }
     if use_ai and (has_tokamak_client() or (HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'))):
-        return generate_with_ai_technical(repo_name, summary, info)
-    return generate_basic_technical(repo_name, summary, info)
+        section = generate_with_ai_technical(repo_name, summary, info)
+    else:
+        section = generate_basic_technical(repo_name, summary, info)
+
+    overview = build_repo_technical_overview(summary)
+    if overview:
+        return f"{overview}\n{section}"
+    return section
 
 
 def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
@@ -1720,6 +1779,9 @@ Key development areas:
 
         response = generate_with_llm(prompt, max_tokens=400)
         if response:
+            cleaned = response.strip()
+            if report_type == "technical" and re.match(r"^Total:\s*\d+", cleaned, flags=re.IGNORECASE):
+                return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
             return response
         if report_type == "technical":
             return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)

@@ -73,7 +73,6 @@ export default function Home() {
   const [endDate, setEndDate] = useState('2026. 02. 10.')
   const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
-  const [includeIndividuals, setIncludeIndividuals] = useState(true)
   const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
   const [repoLimit, setRepoLimit] = useState('0')
   const [activeView, setActiveView] = useState<'preview' | 'raw'>('preview')
@@ -126,7 +125,7 @@ export default function Home() {
       formData.append('report_type', reportType)
       formData.append('use_ai', useAI.toString())
       formData.append('report_scope', effectiveScope)
-      formData.append('include_individuals', includeIndividuals.toString())
+      formData.append('include_individuals', 'false')
       formData.append('project_filter', 'all')
       formData.append('member_filter', 'all')
       formData.append('report_grouping', reportGrouping)
@@ -414,26 +413,6 @@ export default function Home() {
                     <span
                       className={`h-5 w-5 rounded-full bg-white shadow transition ${
                         useAI ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-                <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">Include individual contributions</div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Toggle personal updates in section 2.5.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setIncludeIndividuals((prev) => !prev)}
-                    className={`flex h-7 w-12 items-center rounded-full px-1 transition ${
-                      includeIndividuals ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`h-5 w-5 rounded-full bg-white shadow transition ${
-                        includeIndividuals ? 'translate-x-5' : 'translate-x-0'
                       }`}
                     />
                   </button>
