@@ -12,6 +12,14 @@ import re
 from collections import defaultdict
 from typing import Optional, Tuple, List, Dict, Set, Any, TypedDict
 from datetime import datetime
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv  # type: ignore
+    ENV_PATH = Path(__file__).resolve().parent / ".env"
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
+except Exception:
+    ENV_PATH = None
 
 try:
     import anthropic  # type: ignore
@@ -114,29 +122,266 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
 }
 
 
-TOKAMAK_BASE_URL = os.environ.get("TOKAMAK_BASE_URL", "https://api.ai.tokamak.network")
-TOKAMAK_API_KEY = os.environ.get("TOKAMAK_API_KEY", "")
-TOKAMAK_MODEL = os.environ.get("TOKAMAK_MODEL", "gpt-5.2-pro")
+DEFAULT_TOKAMAK_BASE_URL = "https://api.ai.tokamak.network"
+DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
+DEFAULT_TOKAMAK_TIMEOUT = 30
+MAX_AI_REPO_LIMIT = 5
 
 
-def has_tokamak_client() -> bool:
-    return bool(TOKAMAK_API_KEY) and HAS_OPENAI and OpenAI is not None
-
-
-def generate_with_tokamak(prompt: str, max_tokens: int) -> Optional[str]:
-    if not has_tokamak_client() or OpenAI is None:
-        return None
-    client = OpenAI(base_url=TOKAMAK_BASE_URL, api_key=TOKAMAK_API_KEY)
+def refresh_env() -> None:
+    if ENV_PATH is None:
+        return
     try:
+        load_dotenv(dotenv_path=ENV_PATH, override=True)  # type: ignore[name-defined]
+    except Exception:
+        return
+
+
+def get_tokamak_base_url() -> str:
+    return os.environ.get("TOKAMAK_BASE_URL", DEFAULT_TOKAMAK_BASE_URL)
+
+
+def get_tokamak_api_key() -> str:
+    return os.environ.get("TOKAMAK_API_KEY", "")
+
+
+def get_tokamak_model() -> str:
+    return os.environ.get("TOKAMAK_MODEL", DEFAULT_TOKAMAK_MODEL)
+
+
+def get_tokamak_models() -> List[str]:
+    raw = os.environ.get("TOKAMAK_MODELS", "")
+    if not raw:
+        raw = os.environ.get("TOKAMAK_AVAILABLE_MODELS", "")
+    return [model.strip() for model in raw.split(",") if model.strip()]
+
+
+def get_tokamak_timeout() -> int:
+    raw = os.environ.get("TOKAMAK_REQUEST_TIMEOUT", "")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TOKAMAK_TIMEOUT
+    return max(5, value)
+
+
+def get_model_timeout(model: Optional[str]) -> int:
+    base = get_tokamak_timeout()
+    if not model:
+        return base
+    lowered = model.lower()
+    if lowered.startswith("gemini"):
+        return max(10, min(base, 20))
+    if lowered.startswith("qwen"):
+        return max(10, min(base, 25))
+    if lowered.startswith("deepseek"):
+        return max(10, min(base, 25))
+    if lowered.startswith("gpt-5"):
+        return max(15, min(base, 35))
+    return base
+
+
+def get_model_temperature(model: Optional[str]) -> float:
+    if not model:
+        return 0.5
+    lowered = model.lower()
+    if lowered.startswith("gpt-5.2"):
+        return 0.4
+    if lowered.startswith("gemini"):
+        return 0.7
+    if lowered.startswith("qwen"):
+        return 0.6
+    if lowered.startswith("deepseek"):
+        return 0.6
+    return 0.5
+
+
+def model_style_hint(model: Optional[str], report_type: str) -> str:
+    if not model:
+        return ""
+    lowered = model.lower()
+    if report_type == "public":
+        if lowered.startswith("gemini"):
+            return "Use crisp, energetic phrasing with clear benefits."
+        if lowered.startswith("qwen"):
+            return "Use structured, balanced phrasing with measured optimism."
+        if lowered.startswith("deepseek"):
+            return "Use analytical, concrete phrasing with practical outcomes."
+        if lowered.startswith("gpt-5"):
+            return "Use polished, executive-friendly phrasing with clear impact."
+    else:
+        if lowered.startswith("gemini"):
+            return "Be concise and pragmatic; emphasize operational changes."
+        if lowered.startswith("qwen"):
+            return "Be systematic and precise; emphasize implementation details."
+        if lowered.startswith("deepseek"):
+            return "Be analytical and engineering-first; emphasize mechanisms."
+        if lowered.startswith("gpt-5"):
+            return "Be crisp and technical; emphasize architecture and verification."
+    return ""
+
+
+def sanitize_technical_highlight(text: str) -> str:
+    if not text:
+        return text
+    normalized = re.sub(r"\s+", " ", text).strip()
+    sentences = re.split(r"(?<=[.!?])\s+", normalized)
+    filtered = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if "total:" in lowered:
+            continue
+        if re.search(r"\b\d+\s+(commits?|prs?|pull requests?|repositories?)\b", lowered):
+            continue
+        if re.search(r"\b(commits?|prs?|pull requests?|repositories?)\b", lowered):
+            continue
+        filtered.append(sentence)
+    if not filtered:
+        return normalized
+    return " ".join(filtered[:2]).strip()
+
+
+def sanitize_public_highlight(text: str) -> str:
+    if not text:
+        return text
+    normalized = re.sub(r"\s+", " ", text).strip()
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()]
+    if not sentences:
+        return normalized
+    noise_patterns = [
+        r"\buser wants\b",
+        r"\bthey've provided\b",
+        r"\bconstraints\b",
+        r"\bi need to\b",
+        r"\bmust avoid\b",
+        r"\blooking at the data\b",
+        r"\bbrainstorm\b",
+        r"\bhmm\b",
+        r"\bmust be\b",
+        r"\bshould\b",
+        r"\bprobably wants\b",
+        r"\bfirst sentence\b",
+        r"\bsecond sentence\b",
+        r"\bthird sentence\b",
+        r"\bchecking constraints\b",
+        r"\bdouble-checking\b",
+        r"\btime to output\b",
+        r"\bexactly three sentences\b",
+    ]
+    filtered = []
+    for sentence in sentences:
+        lowered = sentence.lower()
+        if any(re.search(pattern, lowered) for pattern in noise_patterns):
+            continue
+        if re.search(r"\b(i|i'm|i'll|i've|we|we're|we'll|we've)\b", lowered):
+            continue
+        if re.search(r"\bneed to|must|should|got it\b", lowered):
+            continue
+        filtered.append(sentence)
+    if not filtered:
+        return normalized
+    return " ".join(filtered[:3]).strip()
+
+
+def sanitize_repo_technical_section(section: str) -> str:
+    if not section:
+        return section
+    lines = [line.rstrip() for line in section.splitlines()]
+    bullets = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or not stripped.startswith("*"):
+            continue
+        lowered = stripped.lower()
+        if "tokamak network technical report" in lowered:
+            continue
+        if "summary:" in lowered or "total:" in lowered:
+            continue
+        if "development activities" in lowered:
+            continue
+        if stripped.startswith("**") or stripped.startswith("* **"):
+            continue
+        if not re.search(r"\[commit\]\(|\bpr#\d+|sha:\s*[0-9a-f]{4,}", lowered, flags=re.IGNORECASE):
+            continue
+        bullets.append(stripped)
+    return "\n".join(bullets).strip()
+
+
+def trim_summary_for_ai(summary: dict, commit_limit: int, pr_limit: int) -> dict:
+    trimmed = dict(summary)
+    trimmed["top_commits"] = summary.get("top_commits", [])[:commit_limit]
+    trimmed["merged_pr_list"] = summary.get("merged_pr_list", [])[:pr_limit]
+    return trimmed
+
+
+def normalize_model_list(raw_value: Optional[str]) -> List[str]:
+    if not raw_value:
+        return []
+    items = [item.strip() for item in raw_value.split(",") if item.strip()]
+    seen: Set[str] = set()
+    normalized: List[str] = []
+    for item in items:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(item)
+    return normalized
+
+
+def resolve_requested_models(model: Optional[str], models: Optional[str]) -> List[str]:
+    requested = normalize_model_list(models or model)
+    if requested:
+        return requested
+    defaults = get_tokamak_models()
+    if defaults:
+        return defaults
+    return [get_tokamak_model()]
+
+
+def has_tokamak_client(model: Optional[str] = None) -> bool:
+    refresh_env()
+    api_key = get_tokamak_api_key()
+    if not api_key:
+        return False
+    if not HAS_OPENAI or OpenAI is None:
+        return False
+    selected = model or get_tokamak_model()
+    return bool(selected)
+
+
+def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
+    if not has_tokamak_client(model) or OpenAI is None:
+        return None
+    selected_model = model or get_tokamak_model()
+    timeout = get_model_timeout(selected_model)
+    client = OpenAI(base_url=get_tokamak_base_url(), api_key=get_tokamak_api_key(), timeout=timeout)
+    try:
+        if selected_model.startswith("gpt-5.2"):
+            responses = getattr(client, "responses", None)
+            if responses is not None:
+                response = responses.create(
+                    model=selected_model,
+                    input=prompt,
+                    max_output_tokens=max_tokens,
+                    temperature=get_model_temperature(selected_model),
+                    timeout=timeout,
+                )
+                text = getattr(response, "output_text", "")
+                if text:
+                    return text.strip()
+        temperature = get_model_temperature(selected_model)
         response = client.chat.completions.create(
-            model=TOKAMAK_MODEL,
+            model=selected_model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=max_tokens,
-            temperature=0.4,
+            temperature=temperature,
+            timeout=timeout,
         )
         content = response.choices[0].message.content if response.choices else None
         return content.strip() if content else None
-    except Exception:
+    except Exception as exc:
+        print(f"Tokamak request failed for model {selected_model}: {exc}")
         return None
 
 
@@ -156,11 +401,11 @@ def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
         return None
 
 
-def generate_with_llm(prompt: str, max_tokens: int) -> Optional[str]:
-    tokamak_response = generate_with_tokamak(prompt, max_tokens)
+def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
+    tokamak_response = generate_with_tokamak(prompt, max_tokens, model)
     if tokamak_response:
         return tokamak_response
-    return generate_with_anthropic(prompt, max_tokens)
+    return None
 
 
 def get_project_for_repo(repo_name: str) -> Optional[str]:
@@ -927,6 +1172,10 @@ def generate_technical_highlight(
     total_repos: int,
 ) -> str:
     entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    themes = derive_technical_themes(summaries)
+    theme_sentence = ""
+    if themes:
+        theme_sentence = f"This sprint emphasized {themes[0]}" + (f" and {themes[1]}." if len(themes) > 1 else ".")
     focus: List[Tuple[str, str]] = []
     for repo_name, summary in entries:
         if repo_name == "Other repos":
@@ -938,7 +1187,7 @@ def generate_technical_highlight(
             break
 
     if not focus:
-        return f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+        return "Delivered focused engineering progress across core systems and tooling."
 
     if len(focus) == 1:
         sentence_one = f"Key engineering progress centered on {focus[0][0]}, including {focus[0][1]}."
@@ -954,9 +1203,8 @@ def generate_technical_highlight(
             else ""
         )
 
-    sentences = " ".join(sentence for sentence in [sentence_one, sentence_two] if sentence)
-    stats = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
-    return f"{sentences} {stats}".strip()
+    sentences = " ".join(sentence for sentence in [theme_sentence, sentence_one, sentence_two] if sentence)
+    return sentences.strip()
 
 
 def highlight_focus_count(scope: str) -> int:
@@ -971,38 +1219,15 @@ def generate_public_highlight(
     summaries: Dict[str, Dict[str, Any]],
     total_commits: int,
     total_prs: int,
+    total_repos: int,
     scope: str,
 ) -> str:
-    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
-    highlights: List[Tuple[str, str]] = []
-    focus_count = highlight_focus_count(scope)
-    narrative_limit = max(4, focus_count + 1)
-    for repo_name, summary in entries[:max(6, narrative_limit + 1)]:
-        deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), 1)
-        if not deliverables:
-            deliverables = extract_public_commit_deliverables(summary.get("top_commits", []), 1)
-        if deliverables:
-            highlights.append((repo_name, deliverables[0]))
-        if len(highlights) >= narrative_limit:
-            break
-
-    if not highlights:
-        return (
-            f"이번 기간 동안 토카막 네트워크는 **{total_commits}**개의 기여와 "
-            f"**{total_prs}**개의 병합된 제안을 통해 핵심 생태계 역량을 강화했습니다."
-        )
-
-    narrative = format_public_highlight_items([item for _, item in highlights])
-    focus_pairs = []
-    for repo_name, item in highlights[:focus_count]:
-        cleaned = rewrite_public_jargon(item, repo_name)
-        cleaned = ensure_public_verb(enrich_public_deliverable(cleaned, "", repo_name))
-        focus_pairs.append((repo_name, strip_verb(cleaned)))
-    focus_sentence = ", ".join(f"{repo}의 {phrase}" for repo, phrase in focus_pairs)
+    theme = derive_public_theme(summaries)
+    achievement = pick_public_achievement(summaries)
     return (
-        f"이번 기간 동안 토카막은 {narrative}를 달성하며 다음 단계로 나아갔습니다. "
-        f"특히 {focus_sentence}에서 드러난 진전이 이번 회차의 방향성을 보여줍니다. "
-        f"이번 회차의 핵심은 {focus_sentence}로 요약됩니다."
+        f"Tokamak Network advanced {theme.lower()} with a focus on practical user impact. "
+        f"{achievement}. "
+        f"Total: **{total_commits}** commits, **{total_prs}** merged PRs across **{total_repos}** repositories."
     )
 
 
@@ -1077,6 +1302,120 @@ def dedupe_prefixes(items: List[str]) -> List[str]:
     return results
 
 
+def extract_repo_keywords(commits: List[Dict[str, Any]], prs: List[Dict[str, Any]], limit: int = 5) -> List[str]:
+    keyword_map = {
+        "k8s": "K8s",
+        "grpc": "gRPC",
+        "web3": "Web3",
+        "postgres": "Postgres",
+        "postgresql": "Postgres",
+    }
+    known_keywords = [
+        "BLS",
+        "UUPS",
+        "MIPS",
+        "EVM",
+        "ZK",
+        "ZKP",
+        "L2",
+        "RPC",
+        "SDK",
+        "API",
+        "ABI",
+        "DEX",
+        "DAO",
+        "RAT",
+        "KZG",
+        "EIP",
+        "ERC",
+        "RLP",
+        "P2P",
+        "JWT",
+        "OAuth",
+        "AMM",
+        "MPC",
+        "Redis",
+        "Kafka",
+        "Docker",
+        "Kubernetes",
+        "i18n",
+        "l10n",
+        "Railgun",
+    ]
+    results: List[str] = []
+    seen: Set[str] = set()
+
+    def add(token: str) -> None:
+        if not token:
+            return
+        normalized = keyword_map.get(token.lower(), token)
+        key = normalized.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        results.append(normalized)
+
+    entries = commits + prs
+    for entry in entries:
+        text = entry.get("message") or entry.get("title") or ""
+        if not text:
+            continue
+        for token in re.findall(r"\b[A-Z]{2,10}\b", text):
+            add(token)
+        for token in re.findall(r"\b[A-Z][a-z]+[A-Z][A-Za-z0-9]+\b", text):
+            add(token)
+        for token in re.findall(r"\b[a-z]{1,4}\d{1,3}\b", text, flags=re.IGNORECASE):
+            add(token)
+        for token in known_keywords:
+            if re.search(rf"\b{re.escape(token)}\b", text, flags=re.IGNORECASE):
+                add(token)
+        if len(results) >= limit:
+            break
+
+    return results[:limit]
+
+
+def inject_keywords(sentence: str, keywords: List[str], used: Set[str], max_keywords: int) -> str:
+    available = []
+    lower_sentence = sentence.lower()
+    for keyword in keywords:
+        key = keyword.lower()
+        if key in used or key in lower_sentence:
+            continue
+        available.append(keyword)
+    if not available:
+        return sentence
+    selected = available[:max_keywords]
+    for keyword in selected:
+        used.add(keyword.lower())
+    suffix = " and ".join(selected)
+    if sentence.endswith("."):
+        sentence = sentence[:-1]
+    return f"{sentence}, including {suffix}"
+
+
+def derive_technical_themes(summaries: Dict[str, Dict[str, Any]]) -> List[str]:
+    theme_map = [
+        ("staking and validator reliability", ["staking", "validator", "delegate", "reward", "slash", "seig"]),
+        ("governance tooling", ["governance", "dao", "proposal", "vote"]),
+        ("rollup infrastructure", ["rollup", "sequencer", "drb", "hub"]),
+        ("zero-knowledge privacy", ["zk", "zero-knowledge", "proof", "privacy", "channel"]),
+        ("wallet experience", ["wallet", "snap", "extension"]),
+        ("developer tooling", ["sdk", "cli", "api", "rpc"]),
+        ("infra performance", ["infra", "node", "database", "cache", "redis", "metrics", "monitor"]),
+    ]
+    entries = sorted(summaries.items(), key=lambda item: repo_sort_key(item[1]), reverse=True)
+    text = " ".join(
+        " ".join(c.get("message", "") for c in summary.get("top_commits", [])[:10])
+        for _, summary in entries[:5]
+    ).lower()
+    themes = []
+    for label, needles in theme_map:
+        if any(needle in text for needle in needles):
+            themes.append(label)
+    return themes[:2]
+
+
 def extract_technical_deliverables(commits: List[Dict[str, Any]], limit: int) -> List[str]:
     deliverables: List[str] = []
     seen: Set[str] = set()
@@ -1121,10 +1460,13 @@ def build_project_summary_paragraph(project: str, summary: dict, report_type: st
     if not items:
         return ""
 
+    keywords = extract_repo_keywords(summary.get("top_commits", []), summary.get("merged_pr_list", []), 4)
+    used_keywords: Set[str] = set()
     cleaned = []
     for item in items:
         text = ensure_public_verb(enrich_public_deliverable(item, project))
         text = rewrite_public_jargon(text)
+        text = inject_keywords(text, keywords, used_keywords, 1)
         cleaned.append(strip_verb(text))
 
     clause = ", ".join(cleaned)
@@ -1134,13 +1476,7 @@ def build_project_summary_paragraph(project: str, summary: dict, report_type: st
 
 
 def build_repo_technical_overview(summary: dict) -> str:
-    commits = summary.get("top_commits", [])
-    items = extract_technical_highlight_items(commits, 2)
-    if not items:
-        return ""
-    if len(items) == 1:
-        return f"{items[0]}."
-    return f"{items[0]} and {items[1]}."
+    return ""
 
 
 def build_raw_data_input(
@@ -1215,8 +1551,9 @@ def generate_full_report_with_ai(
     total_prs: int,
     total_repos: int,
     report_grouping: str,
+    model: Optional[str] = None,
 ) -> Optional[str]:
-    if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
+    if not has_tokamak_client(model):
         return None
 
     start = date_range.get("start") or "N/A"
@@ -1224,59 +1561,81 @@ def generate_full_report_with_ai(
     raw_data = build_raw_data_input(summaries, individual_summaries, report_type, report_grouping)
 
     if report_type == "technical":
-        prompt = f"""[Role]
+        if report_grouping == "repository":
+            prompt = f"""[Role]
 You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
 
-[Team & Project Context]
-- 2.2 (Ooo): Zero-Knowledge Proof-Based Private App Channels.
-- 2.3 (Eco): Decentralized Staking and Governance.
-- 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
-
-[Constraints]
-1. Header: "Tokamak Network Technical Report: [Date Range]"
-2. Summary: Display "Total: X commits, Y merged PRs across Z repositories" only ONCE at the top.
-3. Bullets: Every bullet point must follow this strict format:
-   - "* [Action Verb] [Specific Function/Feature] in [Repository Directory Path] ([Commit](URL))"
-   - Example: "* Implemented updateUserStorageSlot in Tokamak/zk/EVM/contracts ([Commit](https://...))"
-4. Detail: Do not use vague words like "fixed" or "updated" alone. If the data is sparse, infer the technical context from the directory path or commit message to be as descriptive as possible.
-5. Contributors: For each main contributor, summarize their primary technical achievement during this period.
+[Output Rules]
+1. Output only the final report. No analysis or meta commentary.
+2. Start with a 2-sentence highlight, then a single stats line:
+   Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories.
+3. Then, for each repository in the input order, output:
+   - A section header: ### <name>
+   - One concise technical summary sentence.
+   - 2-5 bullet points, each in the format:
+     - [Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL))
+4. If the repository name is "Other repos", provide a concise aggregate summary and 2-3 bullets about overall maintenance and supporting work.
+5. Do not add extra headings, emojis, or additional sections.
 
 [Data Input]
-Date Range: {start} to {end}
-Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories
+{raw_data}
+"""
+        else:
+            prompt = f"""[Role]
+You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
 
+[Output Rules]
+1. Output only the final report. No analysis or meta commentary.
+2. Start with a 2-sentence highlight, then a single stats line:
+   Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories.
+3. Then, for each project in the input order, output:
+   - A section header: ### <name>
+   - One concise technical summary sentence.
+   - 2-5 bullet points, each in the format:
+     - [Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL))
+4. Do not add extra headings, emojis, or additional sections.
+
+[Data Input]
 {raw_data}
 """
     else:
-        prompt = f"""[Role]
+        if report_grouping == "repository":
+            prompt = f"""[Role]
 You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
 
-[Team & Project Context]
-- 2.2 (Ooo): Private Transactions & Secure Channels.
-- 2.3 (Eco): Staking Rewards & Community Governance.
-- 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
-
-[Constraints]
-1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
-2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
-3. Grouping: Use engaging titles:
-   - "Private & Secure Transactions (Ooo)"
-   - "Staking & Economic Security (Eco)"
-   - "Scalable Infrastructure (TRH)"
-4. Jargon Filter: Translate all technical terms into "User Impact" language.
-   - Example: Instead of "NFT-based registry", use "Secured ownership through digital asset architecture."
-   - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
-5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
-6. Contributors: Focus on how each person's work improved the overall project mission.
+[Output Rules]
+1. Output only the final report. No analysis or meta commentary.
+2. Highlight must be exactly 3 sentences. No extra lines or stats here.
+3. Then, for each repository in the input order, output:
+   - A section header: ### <name>
+   - One user-benefit summary sentence.
+   - 2-5 bullet points starting with Launched/Secured/Improved, user-impact language only.
+4. If the repository name is "Other repos", provide a concise aggregate summary and 2-3 bullets about overall maintenance and supporting work.
+5. Do not add subheadings like "Launched"/"Secured" as standalone lines. Use bullets only.
+6. Do not include commit links, file paths, emojis, or extra sections.
 
 [Data Input]
-Date Range: {start} to {end}
-Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories
+{raw_data}
+"""
+        else:
+            prompt = f"""[Role]
+You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
 
+[Output Rules]
+1. Output only the final report. No analysis or meta commentary.
+2. Highlight must be exactly 3 sentences. No extra lines or stats here.
+3. Then, for each project in the input order, output:
+   - A section header: ### <name>
+   - One user-benefit summary sentence.
+   - 2-5 bullet points starting with Launched/Secured/Improved, user-impact language only.
+4. Do not add subheadings like "Launched"/"Secured" as standalone lines. Use bullets only.
+5. Do not include commit links, file paths, emojis, or extra sections.
+
+[Data Input]
 {raw_data}
 """
 
-    return generate_with_llm(prompt, max_tokens=2000)
+    return generate_with_llm(prompt, max_tokens=2000, model=model)
 
 
 def simplify_message_public(message: str) -> str:
@@ -1349,12 +1708,17 @@ def extract_deliverables(
     return deliverables
 
 
-def generate_technical_section(project: str, summary: dict, use_ai: bool = True) -> str:
+def generate_technical_section(
+    project: str,
+    summary: dict,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     """Generate technical report section."""
     info = SECTION_INFO_TECHNICAL[project]
 
-    if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
-        section = generate_with_ai_technical(project, summary, info)
+    if use_ai and has_tokamak_client(model):
+        section = generate_with_ai_technical(project, summary, info, model=model)
     else:
         section = generate_basic_technical(project, summary, info)
 
@@ -1364,12 +1728,17 @@ def generate_technical_section(project: str, summary: dict, use_ai: bool = True)
     return section
 
 
-def generate_public_section(project: str, summary: dict, use_ai: bool = True) -> str:
+def generate_public_section(
+    project: str,
+    summary: dict,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     """Generate public report section."""
     info = SECTION_INFO_PUBLIC[project]
 
-    if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
-        section = generate_with_ai_public(project, summary, info)
+    if use_ai and has_tokamak_client(model):
+        section = generate_with_ai_public(project, summary, info, model=model)
     else:
         section = generate_basic_public(project, summary, info)
 
@@ -1379,25 +1748,34 @@ def generate_public_section(project: str, summary: dict, use_ai: bool = True) ->
     return section
 
 
-def generate_repo_technical_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
+def generate_repo_technical_section(
+    repo_name: str,
+    summary: dict,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     info = {
         "number": "",
         "title": repo_name,
         "context": f"Repository activity summary for {repo_name}.",
         "overview_url": f"https://github.com/tokamak-network/{repo_name}",
     }
-    if use_ai and (has_tokamak_client() or (HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'))):
-        section = generate_with_ai_technical(repo_name, summary, info)
+    if use_ai and has_tokamak_client(model):
+        section = generate_with_ai_technical(repo_name, summary, info, model=model)
     else:
         section = generate_basic_technical(repo_name, summary, info)
+    section = sanitize_repo_technical_section(section)
+    if section:
+        return section
+    return generate_basic_technical(repo_name, summary, info)
 
-    overview = build_repo_technical_overview(summary)
-    if overview:
-        return f"{overview}\n{section}"
-    return section
 
-
-def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = True) -> str:
+def generate_repo_public_section(
+    repo_name: str,
+    summary: dict,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     if repo_name == "Other repos":
         remaining = len(summary.get("repos", []))
         return (
@@ -1425,11 +1803,15 @@ def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = T
     if not deliverables:
         deliverables = ["Improved core infrastructure for better performance"]
 
+    keywords = extract_repo_keywords(summary.get("top_commits", []), summary.get("merged_pr_list", []), 5)
+    used_keywords: Set[str] = set()
+
     cleaned_items = []
     for item in deliverables[:limit]:
         cleaned = ensure_public_verb(enrich_public_deliverable(item, "", repo_name))
         cleaned = rewrite_public_jargon(cleaned, repo_name)
         cleaned = diversify_public_verb(cleaned, repo_name)
+        cleaned = inject_keywords(cleaned, keywords, used_keywords, 1)
         cleaned_items.append(cleaned)
 
     if not cleaned_items:
@@ -1442,19 +1824,19 @@ def generate_repo_public_section(repo_name: str, summary: dict, use_ai: bool = T
     return summary_sentence + "\n"
 
 
-def generate_with_ai_technical(project: str, summary: dict, info: dict) -> str:
-    """Generate technical section using Claude API."""
-    if not has_tokamak_client() and anthropic is None:
+def generate_with_ai_technical(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
+    """Generate technical section using Tokamak API."""
+    if not has_tokamak_client(model):
         return generate_basic_technical(project, summary, info)
 
     commit_list = "\n".join([
         f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), True)} (sha: {c['sha']})"
-        for c in summary['top_commits'][:20]
+        for c in summary['top_commits'][:12]
     ])
 
     pr_list = "\n".join([
         f"- [{p['repo']}] PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), True)}"
-        for p in summary['merged_pr_list'][:10]
+        for p in summary['merged_pr_list'][:6]
     ])
 
     prompt = f"""[Role]
@@ -1466,6 +1848,7 @@ You are a Senior Software Architect at Tokamak Network. Your task is to generate
 - 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
 
 [Constraints]
+0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
 1. Header: "Tokamak Network Technical Report: [Date Range]"
 2. Summary: Display "Total: X commits, Y merged PRs across Z repositories" only ONCE at the top.
 3. Bullets: Every bullet point must follow this strict format:
@@ -1473,6 +1856,7 @@ You are a Senior Software Architect at Tokamak Network. Your task is to generate
    - Example: "* Implemented updateUserStorageSlot in Tokamak/zk/EVM/contracts ([Commit](https://...))"
 4. Detail: Do not use vague words like "fixed" or "updated" alone. If the data is sparse, infer the technical context from the directory path or commit message to be as descriptive as possible.
 5. Contributors: For each main contributor, summarize their primary technical achievement during this period.
+6. {model_style_hint(model, "technical")}
 
 [Data Input]
 Project: {info['title']}
@@ -1488,20 +1872,20 @@ Merged PRs:
 {pr_list}
 """
 
-    bullets = generate_with_llm(prompt, max_tokens=1500)
+    bullets = generate_with_llm(prompt, max_tokens=1500, model=model)
     if not bullets:
         return generate_basic_technical(project, summary, info)
     return f"{bullets}\n"
 
 
-def generate_with_ai_public(project: str, summary: dict, info: dict) -> str:
-    """Generate public section using Claude API."""
-    if not has_tokamak_client() and anthropic is None:
+def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
+    """Generate public section using Tokamak API."""
+    if not has_tokamak_client(model):
         return generate_basic_public(project, summary, info)
 
     commit_list = "\n".join([
         f"- [{c['repo']}] {sanitize_initial_commit(c['message'], c.get('repo'), False)}"
-        for c in summary['top_commits'][:20]
+        for c in summary['top_commits'][:12]
     ])
 
     prompt = f"""[Role]
@@ -1513,6 +1897,7 @@ You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate
 - 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
 
 [Constraints]
+0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
 1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
 2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
 3. Grouping: Use engaging titles:
@@ -1524,6 +1909,7 @@ You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate
    - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
 5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
 6. Contributors: Focus on how each person's work improved the overall project mission.
+7. {model_style_hint(model, "public")}
 
 [Data Input]
 Project: {info['title']}
@@ -1536,7 +1922,7 @@ Recent commits (for context only):
 {commit_list}
 """
 
-    bullets = generate_with_llm(prompt, max_tokens=1000)
+    bullets = generate_with_llm(prompt, max_tokens=1000, model=model)
     if not bullets:
         return generate_basic_public(project, summary, info)
     return f"{bullets}\n"
@@ -1577,17 +1963,29 @@ def generate_basic_public(project: str, summary: dict, info: dict) -> str:
     return "\n".join(bullets) + "\n"
 
 
-def generate_individual_section(member_label: str, summary: dict, report_type: str, use_ai: bool = True) -> str:
+def generate_individual_section(
+    member_label: str,
+    summary: dict,
+    report_type: str,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     info = SECTION_INFO_INDIVIDUAL_TECHNICAL if report_type == "technical" else SECTION_INFO_INDIVIDUAL_PUBLIC
 
-    if use_ai and HAS_ANTHROPIC and os.environ.get('ANTHROPIC_API_KEY'):
-        return generate_with_ai_individual(member_label, summary, info, report_type)
+    if use_ai and has_tokamak_client(model):
+        return generate_with_ai_individual(member_label, summary, info, report_type, model=model)
 
     return generate_basic_individual(member_label, summary, info, report_type)
 
 
-def generate_with_ai_individual(member_label: str, summary: dict, info: dict, report_type: str) -> str:
-    if not has_tokamak_client() and anthropic is None:
+def generate_with_ai_individual(
+    member_label: str,
+    summary: dict,
+    info: dict,
+    report_type: str,
+    model: Optional[str] = None,
+) -> str:
+    if not has_tokamak_client(model):
         return generate_basic_individual(member_label, summary, info, report_type)
 
     technical = report_type == "technical"
@@ -1619,7 +2017,7 @@ Generate 6-8 bullet points summarizing key development activities. Rules:
 2. Include technical details.
 3. Add GitHub links: ([PR#XX](https://github.com/tokamak-network/REPO/pull/NUMBER)) or ([Commit](https://github.com/tokamak-network/REPO/commit/SHA)).
 
-Output only the bullet points."""
+Output only the bullet points. Do not include analysis, reasoning, or meta commentary."""
     else:
         prompt = f"""Write a monthly activity summary for {member_label} targeting non-technical readers.
 
@@ -1635,9 +2033,9 @@ Generate 4-6 bullet points:
 3. No GitHub links.
 4. Start with action verbs.
 
-Output only the bullet points."""
+Output only the bullet points. Do not include analysis, reasoning, or meta commentary."""
 
-    bullets = generate_with_llm(prompt, max_tokens=1200)
+    bullets = generate_with_llm(prompt, max_tokens=1200, model=model)
     if not bullets:
         return generate_basic_individual(member_label, summary, info, report_type)
     return f"{bullets}\n"
@@ -1664,7 +2062,12 @@ def generate_basic_individual(member_label: str, summary: dict, info: dict, repo
     return "Delivered targeted progress across individual initiatives"
 
 
-def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]], report_type: str, use_ai: bool = True) -> str:
+def generate_individuals_section(
+    individual_summaries: Dict[str, Dict[str, Any]],
+    report_type: str,
+    use_ai: bool = True,
+    model: Optional[str] = None,
+) -> str:
     if not individual_summaries:
         return ""
 
@@ -1680,7 +2083,7 @@ def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]]
 
     lines = []
     for _, label, summary in top_entries:
-        detail = generate_basic_individual(label, summary, SECTION_INFO_INDIVIDUAL_PUBLIC, report_type)
+        detail = generate_individual_section(label, summary, report_type, use_ai, model=model)
         if detail:
             lines.append(f"- {label}: {detail}.")
 
@@ -1690,9 +2093,17 @@ def generate_individuals_section(individual_summaries: Dict[str, Dict[str, Any]]
     return "\n".join(lines) + "\n"
 
 
-def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits: int, total_prs: int, total_repos: int, date_range: Optional[dict] = None) -> str:
+def generate_highlight_with_ai(
+    summaries: dict,
+    report_type: str,
+    total_commits: int,
+    total_prs: int,
+    total_repos: int,
+    date_range: Optional[dict] = None,
+    model: Optional[str] = None,
+) -> str:
     """Generate engaging highlight using AI for public reports."""
-    if not has_tokamak_client() and (not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None):
+    if not has_tokamak_client(model):
         if report_type == "technical":
             return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
@@ -1709,26 +2120,18 @@ def generate_highlight_with_ai(summaries: dict, report_type: str, total_commits:
             if date_range and date_range.get("start") and date_range.get("end"):
                 date_label = f"{date_range['start']} to {date_range['end']}"
             prompt = f"""[Role]
-You are a Visionary Tech Evangelist. Your task is to generate an engaging Public Development Report for Tokamak Network.
+You are a Visionary Tech Evangelist. Your task is to generate a concise highlight for Tokamak Network.
 
 [Tone]
 Inspiring, accessible, and benefit-oriented. Focus on "Why it matters" and "User Impact."
 
 [Constraints]
-1. Header: "Tokamak Network Ecosystem Update: [Date Range]"
-2. Highlight Section:
-   - Write a compelling 3-sentence intro about how Tokamak is making blockchain more accessible.
-   - Use bold numbers for total development activity.
-3. Content Grouping (Use User-Friendly Titles):
-   - Group 2.2: "Advancing Privacy & Secure Transactions"
-   - Group 2.3: "Empowering Community Staking & Rewards"
-   - Group 2.4: "Scaling the Future: Rollup Infrastructure"
-4. Formatting for Bullets:
-   - Translate technical tasks into user benefits.
-   - Use "Launched", "Secured", "Improved" to start sentences.
-   - Example: Instead of "updated MPT key", use "Enhanced security for private wallet deposits."
-5. Contributor Summary:
-   - Focus on project-level achievements (e.g., "Thomas: Built a new on-chain documentation system for transparency").
+0. Output only the highlight text. Do not include analysis, reasoning, or meta commentary.
+1. Highlight must be exactly 3 sentences.
+2. Do not include section headers, bullet points, or grouping labels.
+3. Use bold numbers for total development activity.
+4. Output in English only.
+5. Avoid listing repository names; keep it outcome-focused.
 
 [Data]
 Date Range: {date_label}
@@ -1744,29 +2147,18 @@ Key work areas:
             if date_range and date_range.get("start") and date_range.get("end"):
                 date_label = f"{date_range['start']} to {date_range['end']}"
             prompt = f"""[Role]
-You are a Senior Software Architect. Your task is to generate a highly detailed Technical Development Report for Tokamak Network.
+You are a Senior Software Architect. Your task is to generate a concise technical highlight for Tokamak Network.
 
 [Tone]
 Authoritative, dry, objective, and evidence-based. Focus on "What" and "How."
 
 [Constraints]
-1. Header: "Tokamak Network Technical Report: [Date Range]"
-2. Highlight:
-   - Write 2 concise sentences describing the most significant technical progress.
-   - Use engineering language (e.g., refined ZK circuits, hardened bridge security, optimized backend concurrency).
-   - After the 2 sentences, include a short numeric summary: "Total: X commits, Y merged PRs across Z repositories.".
-   - Keep the tone dry, professional, and concise.
-   - Output only the highlight text (no title, no bullets, no section headers).
-3. Content Grouping:
-   - Group 2.2: ZKP Private Channels (Ooo)
-   - Group 2.3: Staking & Governance (Eco)
-   - Group 2.4: Rollup Infrastructure (TRH)
-4. Formatting for Bullets:
-   - Every update must include the specific function name or module changed.
-   - You MUST append the [Commit](URL) link at the end of each line if provided in data.
-   - Format: "- [Feature/Fix]: [Detailed description mentioning code changes] ([Commit](Link))"
-5. Contributor Summary:
-   - Focus on the technical stack used (e.g., "Thomas: Configured Foundry and verified Solidity sources").
+0. Output only the highlight text. Do not include analysis, reasoning, or meta commentary.
+1. Highlight must be exactly 2 sentences.
+2. Do not include section headers, bullet points, or grouping labels.
+3. Output in English only.
+4. Avoid listing repository names; keep it outcome-focused.
+5. Do not mention commit, PR, or repository counts.
 
 [Data]
 Date Range: {date_label}
@@ -1777,12 +2169,17 @@ Key development areas:
 {chr(10).join(achievements)}
 """
 
-        response = generate_with_llm(prompt, max_tokens=400)
+        response = generate_with_llm(prompt, max_tokens=400, model=model)
         if response:
             cleaned = response.strip()
             if report_type == "technical" and re.match(r"^Total:\s*\d+", cleaned, flags=re.IGNORECASE):
                 return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
-            return response
+            if report_type == "technical":
+                return sanitize_technical_highlight(cleaned)
+            cleaned_public = sanitize_public_highlight(cleaned)
+            if cleaned_public:
+                return cleaned_public
+            return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
         if report_type == "technical":
             return generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
         return generate_basic_highlight(total_commits, total_prs, total_repos, report_type)
@@ -1796,9 +2193,13 @@ Key development areas:
 def generate_basic_highlight(total_commits: int, total_prs: int, total_repos: int, report_type: str) -> str:
     """Generate basic highlight without AI."""
     if report_type == "public":
-        return f"Tokamak Network continues to advance its mission of making blockchain technology more accessible and secure. This period saw meaningful progress across privacy technology, staking infrastructure, and Layer 2 deployment tools, bringing us closer to delivering real value for users and partners."
+        return (
+            f"Tokamak Network advanced user-facing delivery across privacy, staking, and rollup tooling. "
+            f"Key work tightened reliability and reduced friction for builders and users. "
+            f"Total: **{total_commits}** commits, **{total_prs}** merged PRs across **{total_repos}** repositories."
+        )
     else:
-        return f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+        return "Delivered focused engineering progress across core systems and tooling."
 
 
 @app.get("/")
@@ -1836,6 +2237,8 @@ async def generate_report(
     file: UploadFile = File(...),
     report_type: str = Form("technical"),
     use_ai: bool = Form(True),
+    model: Optional[str] = Form(None),
+    models: Optional[str] = Form(None),
     report_scope: str = Form("auto"),
     project_filter: str = Form("all"),
     member_filter: str = Form("all"),
@@ -1845,6 +2248,7 @@ async def generate_report(
 ):
     """Generate report from uploaded CSV file."""
     try:
+        refresh_env()
         content = await file.read()
         content_str = content.decode('utf-8')
 
@@ -1871,6 +2275,13 @@ async def generate_report(
         repo_limit_applied = False
 
         if report_grouping == "repository":
+            effective_repo_limit = repo_limit
+            forced_limit_applied = False
+            if use_ai:
+                if effective_repo_limit <= 0 or effective_repo_limit > MAX_AI_REPO_LIMIT:
+                    effective_repo_limit = MAX_AI_REPO_LIMIT
+                    forced_limit_applied = True
+
             repo_entries = []
             for repo_name, repo_payload in repo_data.items():
                 summary = prepare_summary(repo_name, repo_payload)
@@ -1881,9 +2292,9 @@ async def generate_report(
             repo_entries.sort(key=lambda item: repo_sort_key(item[1]), reverse=True)
             repo_count_total = len(repo_entries)
 
-            if repo_limit and repo_limit > 0 and len(repo_entries) > repo_limit:
-                selected = repo_entries[:repo_limit]
-                remainder = repo_entries[repo_limit:]
+            if effective_repo_limit and effective_repo_limit > 0 and len(repo_entries) > effective_repo_limit:
+                selected = repo_entries[:effective_repo_limit]
+                remainder = repo_entries[effective_repo_limit:]
                 remainder_names = {name for name, _ in remainder}
                 other_group: ActivityGroup = {"commits": [], "prs": [], "repos": set()}
                 for repo_name in remainder_names:
@@ -1904,6 +2315,8 @@ async def generate_report(
             else:
                 summaries = {name: summary for name, summary in repo_entries}
                 repo_count_shown = len(summaries)
+                if forced_limit_applied:
+                    repo_limit_applied = True
         else:
             for project in project_keys:
                 if project in project_data:
@@ -1942,8 +2355,13 @@ async def generate_report(
             "end": end_date,
         }
 
+        requested_models = resolve_requested_models(model, models) if use_ai else []
+        multi_model = len(requested_models) > 1
+        selected_model = requested_models[0] if requested_models else None
+
         full_report = None
-        if use_ai:
+        allow_full_report = use_ai and report_grouping != "repository"
+        if allow_full_report and not multi_model:
             full_report = generate_full_report_with_ai(
                 report_type,
                 summaries,
@@ -1953,11 +2371,17 @@ async def generate_report(
                 total_prs,
                 total_repos,
                 report_grouping,
+                model=selected_model,
             )
 
         # Generate sections
         sections = []
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
+        section_use_ai = use_ai
+        if report_type == "technical" and selected_model:
+            if selected_model.lower().startswith("gemini-3-flash"):
+                section_use_ai = False
+        highlight_use_ai = use_ai
 
         if report_grouping == "repository":
             entries = list(summaries.items())
@@ -1965,10 +2389,11 @@ async def generate_report(
                 entries = [(name, summary) for name, summary in entries if name != "Other repos"]
                 entries.append(("Other repos", summaries["Other repos"]))
             for repo_name, summary in entries:
+                summary = trim_summary_for_ai(summary, 12, 6) if use_ai else summary
                 if report_type == "technical":
-                    section = generate_repo_technical_section(repo_name, summary, use_ai)
+                    section = generate_repo_technical_section(repo_name, summary, section_use_ai, model=selected_model)
                 else:
-                    section = generate_repo_public_section(repo_name, summary, use_ai)
+                    section = generate_repo_public_section(repo_name, summary, section_use_ai, model=selected_model)
                 sections.append({
                     "project": repo_name,
                     "title": repo_name,
@@ -1978,9 +2403,9 @@ async def generate_report(
             for project in project_keys:
                 if project in summaries:
                     if report_type == "technical":
-                        section = generate_technical_section(project, summaries[project], use_ai)
+                        section = generate_technical_section(project, summaries[project], section_use_ai, model=selected_model)
                     else:
-                        section = generate_public_section(project, summaries[project], use_ai)
+                        section = generate_public_section(project, summaries[project], section_use_ai, model=selected_model)
                     sections.append({
                         "project": project,
                         "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
@@ -1988,7 +2413,7 @@ async def generate_report(
                     })
 
         if report_grouping != "repository" and include_individuals and scope in {"monthly", "biweekly"}:
-            section = generate_individuals_section(individual_summaries, report_type, use_ai)
+            section = generate_individuals_section(individual_summaries, report_type, use_ai, model=selected_model)
             if section:
                 sections.append({
                     "project": "individuals",
@@ -1997,7 +2422,7 @@ async def generate_report(
                 })
 
         # Generate highlight
-        if use_ai and not full_report:
+        if highlight_use_ai and not full_report:
             highlight = generate_highlight_with_ai(
                 summaries,
                 report_type,
@@ -2005,18 +2430,120 @@ async def generate_report(
                 total_prs,
                 total_repos,
                 {"start": start_date, "end": end_date},
+                model=selected_model,
             )
         else:
             if report_type == "public":
-                highlight = generate_public_highlight(summaries, total_commits, total_prs, scope)
+                highlight = generate_public_highlight(summaries, total_commits, total_prs, total_repos, scope)
             else:
-                highlight = f"Total: {total_commits} commits, {total_prs} merged PRs across {total_repos} repositories."
+                highlight = generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
+
+        model_reports: Dict[str, Dict[str, Any]] = {}
+        if use_ai and multi_model:
+            for candidate in requested_models:
+                report_payload: Dict[str, Any] = {}
+                candidate_full_report = generate_full_report_with_ai(
+                    report_type,
+                    summaries,
+                    individual_summaries,
+                    date_range,
+                    total_commits,
+                    total_prs,
+                    total_repos,
+                    report_grouping,
+                    model=candidate,
+                )
+                if candidate_full_report:
+                    report_payload["full_report"] = candidate_full_report
+
+                candidate_sections = []
+                if report_grouping == "repository":
+                    entries = list(summaries.items())
+                    if "Other repos" in summaries:
+                        entries = [(name, summary) for name, summary in entries if name != "Other repos"]
+                        entries.append(("Other repos", summaries["Other repos"]))
+                    for repo_name, summary in entries:
+                        summary = trim_summary_for_ai(summary, 12, 6)
+                        if report_type == "technical":
+                            candidate_use_ai = True
+                            if candidate and candidate.lower().startswith("gemini-3-flash"):
+                                candidate_use_ai = False
+                            section = generate_repo_technical_section(repo_name, summary, candidate_use_ai, model=candidate)
+                        else:
+                            section = generate_repo_public_section(repo_name, summary, True, model=candidate)
+                        candidate_sections.append({
+                            "project": repo_name,
+                            "title": repo_name,
+                            "content": section,
+                        })
+                else:
+                    for project in project_keys:
+                        if project in summaries:
+                            if report_type == "technical":
+                                section = generate_technical_section(project, summaries[project], use_ai, model=candidate)
+                            else:
+                                section = generate_public_section(project, summaries[project], use_ai, model=candidate)
+                            candidate_sections.append({
+                                "project": project,
+                                "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
+                                "content": section,
+                            })
+
+                if report_grouping != "repository" and include_individuals and scope in {"monthly", "biweekly"}:
+                    section = generate_individuals_section(individual_summaries, report_type, use_ai, model=candidate)
+                    if section:
+                        candidate_sections.append({
+                            "project": "individuals",
+                            "title": f"{SECTION_INFO_INDIVIDUAL_TECHNICAL['number']}. {SECTION_INFO_INDIVIDUAL_TECHNICAL['title']}",
+                            "content": section,
+                        })
+
+                if highlight_use_ai:
+                    candidate_highlight = generate_highlight_with_ai(
+                        summaries,
+                        report_type,
+                        total_commits,
+                        total_prs,
+                        total_repos,
+                        {"start": start_date, "end": end_date},
+                        model=candidate,
+                    )
+                else:
+                    if report_type == "public":
+                        candidate_highlight = generate_public_highlight(
+                            summaries,
+                            total_commits,
+                            total_prs,
+                            total_repos,
+                            scope,
+                        )
+                    else:
+                        candidate_highlight = generate_technical_highlight(
+                            summaries,
+                            total_commits,
+                            total_prs,
+                            total_repos,
+                        )
+                report_payload.update({
+                    "highlight": candidate_highlight,
+                    "sections": candidate_sections,
+                })
+                model_reports[candidate] = report_payload
+
+        title = ""
+        headline = ""
+        if report_type != "public":
+            title = build_report_title(scope, start_date, end_date, days)
+            headline = build_report_headline(summaries, report_type)
 
         return JSONResponse({
             "success": True,
             "report_type": report_type,
             "report_scope": scope,
             "report_grouping": report_grouping,
+            "model": selected_model,
+            "models": requested_models,
+            "model_reports": model_reports,
             "date_range": {
                 "start": start_date,
                 "end": end_date,
@@ -2031,8 +2558,8 @@ async def generate_report(
             "repo_count_total": repo_count_total,
             "repo_count_shown": repo_count_shown,
             "highlight": highlight,
-            "title": build_report_title(scope, start_date, end_date, days),
-            "headline": build_report_headline(summaries, report_type),
+            "title": title,
+            "headline": headline,
             "full_report": full_report,
             "sections": sections,
             "summaries": summaries,
@@ -2049,7 +2576,8 @@ async def health_check():
         "status": "healthy",
         "anthropic_available": HAS_ANTHROPIC,
         "tokamak_available": has_tokamak_client(),
-        "api_key_set": bool(os.environ.get('ANTHROPIC_API_KEY')),
+        "tokamak_models": get_tokamak_models() or [get_tokamak_model()],
+        "api_key_set": bool(get_tokamak_api_key()),
     }
 
 
