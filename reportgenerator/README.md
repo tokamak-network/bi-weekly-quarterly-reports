@@ -12,7 +12,9 @@ GitHub CSV 데이터를 기반으로 Biweekly 레포트를 생성하는 웹 애�
 - **레포트 분류**: Repository 기반(기본) 또는 Project 기반 선택
 - **레포 제한**: 상위 N개 레포 + Other repos 묶기 지원
 - **Public 요약 구조**: 레포별 1줄 요약 + 추가 bullet 혼합, 활동량에 따라 2~5줄 자동 확장
-- **Technical 하이라이트**: 서술형 2문장 + 활동 요약 숫자 표시
+- **Public 하이라이트**: 3문장 요약, 모델 출력에 포함된 메타 문장 자동 제거
+- **Technical 하이라이트**: 서술형 2문장 요약 (통계 문장 제외)
+- **Technical 레포 섹션 정리**: 레포 단위 섹션에서 Contributors/섹션 헤더/요약문 제거, 커밋·PR bullet만 유지
 - **다양한 형식으로 다운로드**: MD, CSV, TSV
 
 ## 프로젝트 구조
@@ -49,9 +51,6 @@ pip install -r requirements.txt
 export TOKAMAK_API_KEY="your-api-key"
 export TOKAMAK_BASE_URL="https://api.ai.tokamak.network"
 export TOKAMAK_MODEL="gpt-5.2-pro"
-
-# (선택) Anthropic fallback
-export ANTHROPIC_API_KEY="your-claude-key"
 
 # 서버 실행
 python main.py
@@ -94,8 +93,10 @@ npm run dev
 - `file`: CSV 파일 (multipart/form-data)
 - `report_type`: "technical" 또는 "public"
 - `use_ai`: true/false
+- `model`: 단일 모델명 (예: gpt-5.2-pro)
+- `models`: 쉼표로 구분한 복수 모델명 (예: gpt-5.2-pro,gemini-3-pro)
 - `report_grouping`: "repository" 또는 "project"
-- `repo_limit`: 0 (전체) 또는 상위 N개
+- `repo_limit`: 0 (전체) 또는 상위 N개 (AI + repository 그룹핑일 때 최대 5로 강제)
 
 **Response:**
 ```json
@@ -123,4 +124,6 @@ npm run dev
 | TOKAMAK_API_KEY | Tokamak AI API 키 | AI 기능 사용 시 필수 |
 | TOKAMAK_BASE_URL | Tokamak API base URL | 선택 |
 | TOKAMAK_MODEL | Tokamak 모델명 | 선택 |
-| ANTHROPIC_API_KEY | Claude API 키 (fallback) | 선택 |
+| TOKAMAK_MODELS | 모델 목록(쉼표 구분) | 선택 |
+| TOKAMAK_AVAILABLE_MODELS | 서버 제공 모델 목록(쉼표 구분) | 선택 |
+| TOKAMAK_REQUEST_TIMEOUT | 요청 타임아웃(초) | 선택 |
