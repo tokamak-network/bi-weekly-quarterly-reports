@@ -2751,22 +2751,27 @@ async def review_report(
 {report_text}
 
 [Output Format]
-Provide your review as JSON:
+Provide your review as JSON. For each issue, include the EXACT original text and your proposed revision so the author can see specific suggested changes (like Google Docs "Suggest edits" mode):
 {{
   "issues": [
     {{
       "category": "clarity|accuracy|depth|structure|tone",
-      "description": "What the issue is",
+      "description": "What the issue is and why it matters",
       "suggestion": "How to fix it",
-      "severity": "low|medium|high"
+      "severity": "low|medium|high",
+      "original_text": "The exact sentence or phrase from the report that should be changed",
+      "revised_text": "Your improved version of that sentence or phrase"
     }}
   ],
   "strengths": ["What the report does well"],
   "overall_score": <1-10>,
-  "summary": "2-3 sentence overall assessment"
+  "summary": "2-3 sentence overall assessment with actionable next steps"
 }}
 
-Output ONLY the JSON. No additional text or markdown fences."""
+IMPORTANT:
+- For each issue, you MUST include original_text (copied from the report) and revised_text (your improved version).
+- Be specific and constructive. Show exactly what to change, not just what's wrong.
+- Output ONLY the JSON. No additional text or markdown fences."""
 
     response = generate_with_llm(prompt, max_tokens=1500, model=selected_model)
 

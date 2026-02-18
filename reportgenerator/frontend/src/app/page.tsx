@@ -13,6 +13,8 @@ interface ReviewIssue {
   description: string
   suggestion: string
   severity: 'low' | 'medium' | 'high'
+  original_text?: string
+  revised_text?: string
 }
 
 interface ReviewData {
@@ -28,6 +30,11 @@ interface ReviewResult {
   reviewer_level: number
   reviewer_description: string
   review: ReviewData
+}
+
+interface DiffSegment {
+  type: 'unchanged' | 'added' | 'removed'
+  text: string
 }
 
 interface ReportSection {
@@ -182,6 +189,47 @@ function renderMarkdown(md: string) {
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:underline">$1</a>')
 }
 
+function computeDiff(original: string, improved: string): DiffSegment[] {
+  const origLines = original.split('\n')
+  const impLines = improved.split('\n')
+  const segments: DiffSegment[] = []
+  const maxLen = Math.max(origLines.length, impLines.length)
+
+  let oi = 0, ii = 0
+  while (oi < origLines.length || ii < impLines.length) {
+    if (oi < origLines.length && ii < impLines.length) {
+      if (origLines[oi] === impLines[ii]) {
+        segments.push({ type: 'unchanged', text: origLines[oi] })
+        oi++; ii++
+      } else {
+        // Look ahead to find matching line
+        let foundInImp = -1
+        for (let j = ii + 1; j < Math.min(ii + 5, impLines.length); j++) {
+          if (impLines[j] === origLines[oi]) { foundInImp = j; break }
+        }
+        let foundInOrig = -1
+        for (let j = oi + 1; j < Math.min(oi + 5, origLines.length); j++) {
+          if (origLines[j] === impLines[ii]) { foundInOrig = j; break }
+        }
+
+        if (foundInOrig >= 0 && (foundInImp < 0 || (foundInOrig - oi) <= (foundInImp - ii))) {
+          while (oi < foundInOrig) { segments.push({ type: 'removed', text: origLines[oi++] }) }
+        } else if (foundInImp >= 0) {
+          while (ii < foundInImp) { segments.push({ type: 'added', text: impLines[ii++] }) }
+        } else {
+          segments.push({ type: 'removed', text: origLines[oi++] })
+          segments.push({ type: 'added', text: impLines[ii++] })
+        }
+      }
+    } else if (oi < origLines.length) {
+      segments.push({ type: 'removed', text: origLines[oi++] })
+    } else {
+      segments.push({ type: 'added', text: impLines[ii++] })
+    }
+  }
+  return segments
+}
+
 function scoreColor(score: number): string {
   if (score >= 8) return 'text-emerald-600'
   if (score >= 6) return 'text-amber-600'
@@ -239,7 +287,10 @@ export default function Home() {
   const [improving, setImproving] = useState(false)
   const [improvedReport, setImprovedReport] = useState<string | null>(null)
   const [copiedFinal, setCopiedFinal] = useState(false)
-  const [viewMode, setViewMode] = useState<'original' | 'improved'>('original')
+  const [viewMode, setViewMode] = useState<'original' | 'improved' | 'diff'>('original')
+  const [editingReport, setEditingReport] = useState(false)
+  const [editableText, setEditableText] = useState('')
+  const [reviewError, setReviewError] = useState<string | null>(null)
 
   /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
@@ -416,14 +467,16 @@ export default function Home() {
   }
 
   const handleReview = async (level: number) => {
-    const reportText = fullReport ?? rawMarkdown
+    const reportText = editingReport ? editableText : (fullReport ?? rawMarkdown)
     setReviewingLevel(level)
+    setReviewError(null)
 
     try {
       const formData = new FormData()
       formData.append('report_text', reportText)
       formData.append('report_type', reportType)
       formData.append('reviewer_level', level.toString())
+      formData.append('model', selectedModel)
 
       const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
       if (!response.ok) throw new Error('Review request failed')
@@ -435,9 +488,11 @@ export default function Home() {
           return [...filtered, data as ReviewResult].sort((a, b) => a.reviewer_level - b.reviewer_level)
         })
         setExpandedReview(level)
+      } else {
+        setReviewError(`Review failed: ${data.error || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Review failed:', error)
+      setReviewError(`Review failed: ${error instanceof Error ? error.message : 'Network error'}`)
     } finally {
       setReviewingLevel(null)
     }
@@ -448,11 +503,12 @@ export default function Home() {
     setImproving(true)
 
     try {
-      const reportText = fullReport ?? rawMarkdown
+      const reportText = editingReport ? editableText : (fullReport ?? rawMarkdown)
       const formData = new FormData()
       formData.append('report_text', reportText)
       formData.append('report_type', reportType)
       formData.append('reviews_json', JSON.stringify(reviews))
+      formData.append('model', selectedModel)
 
       const response = await fetch('http://localhost:8000/api/improve', { method: 'POST', body: formData })
       if (!response.ok) throw new Error('Improve request failed')
@@ -460,7 +516,7 @@ export default function Home() {
       const data = await response.json()
       if (data.success) {
         setImprovedReport(data.improved_report)
-        setViewMode('improved')
+        setViewMode('diff')
       }
     } catch (error) {
       console.error('Improve failed:', error)
@@ -804,7 +860,12 @@ export default function Home() {
   /* STEP 2 — Review & Improve                                         */
   /* ================================================================ */
 
-  const currentReport = viewMode === 'improved' && improvedReport ? improvedReport : (fullReport ?? rawMarkdown)
+  const originalReport = fullReport ?? rawMarkdown
+  const currentReport = viewMode === 'improved' && improvedReport ? improvedReport : (editingReport ? editableText : originalReport)
+  const diffSegments = useMemo(() => {
+    if (!improvedReport) return []
+    return computeDiff(originalReport, improvedReport)
+  }, [originalReport, improvedReport])
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
@@ -813,7 +874,7 @@ export default function Home() {
         <div className="mb-6 flex items-center justify-between">
           <div>
             <button
-              onClick={() => setStep(1)}
+              onClick={() => { setStep(1); setEditingReport(false) }}
               className="mb-2 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
             >
               ← Back to Generator
@@ -844,27 +905,55 @@ export default function Home() {
                 }`}>
                   {reportType}
                 </span>
-                {improvedReport && (
-                  <div className="flex items-center gap-1 ml-2">
-                    {(['original', 'improved'] as const).map((m) => (
+                <div className="flex items-center gap-1 ml-2">
+                  <button
+                    onClick={() => { setViewMode('original'); setEditingReport(false) }}
+                    className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'original' && !editingReport ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600'}`}
+                  >
+                    Original
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingReport(true)
+                      setViewMode('original')
+                      if (!editableText) setEditableText(originalReport)
+                    }}
+                    className={`rounded-lg px-3 py-1 text-xs font-medium transition ${editingReport ? 'bg-amber-50 text-amber-700' : 'text-gray-400 hover:text-gray-600'}`}
+                  >
+                    Edit
+                  </button>
+                  {improvedReport && (
+                    <>
                       <button
-                        key={m}
-                        onClick={() => setViewMode(m)}
-                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
-                          viewMode === m
-                            ? m === 'improved'
-                              ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-gray-100 text-gray-700'
-                            : 'text-gray-400 hover:text-gray-600'
-                        }`}
+                        onClick={() => { setViewMode('improved'); setEditingReport(false) }}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'improved' ? 'bg-emerald-50 text-emerald-700' : 'text-gray-400 hover:text-gray-600'}`}
                       >
-                        {m === 'original' ? 'Original' : 'Improved'}
+                        Improved
                       </button>
-                    ))}
-                  </div>
-                )}
+                      <button
+                        onClick={() => { setViewMode('diff'); setEditingReport(false) }}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'diff' ? 'bg-purple-50 text-purple-700' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        Changes
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-2">
+                {editingReport && (
+                  <button
+                    onClick={() => {
+                      setFullReport(editableText)
+                      setRawMarkdown(editableText)
+                      setEditingReport(false)
+                      setViewMode('original')
+                    }}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+                  >
+                    Save Changes
+                  </button>
+                )}
                 <button
                   onClick={() => handleCopy(currentReport, setCopiedFinal)}
                   className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 transition"
@@ -883,10 +972,38 @@ export default function Home() {
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
-                <div
-                  className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(currentReport) }}
-                />
+                {editingReport ? (
+                  <textarea
+                    value={editableText}
+                    onChange={(e) => setEditableText(e.target.value)}
+                    className="w-full h-[calc(100vh-280px)] resize-none border-0 bg-transparent font-mono text-sm leading-7 text-gray-700 focus:outline-none focus:ring-0"
+                    spellCheck={false}
+                  />
+                ) : viewMode === 'diff' && improvedReport ? (
+                  <div className="text-sm leading-7 font-mono">
+                    {diffSegments.map((seg, i) => (
+                      <div
+                        key={i}
+                        className={
+                          seg.type === 'added'
+                            ? 'bg-emerald-50 border-l-4 border-emerald-400 pl-3 text-emerald-800'
+                            : seg.type === 'removed'
+                            ? 'bg-red-50 border-l-4 border-red-300 pl-3 text-red-600 line-through'
+                            : 'text-gray-700'
+                        }
+                      >
+                        {seg.type === 'added' && <span className="text-emerald-500 font-bold mr-1">+</span>}
+                        {seg.type === 'removed' && <span className="text-red-400 font-bold mr-1">−</span>}
+                        {seg.text || '\u00A0'}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(currentReport) }}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -906,12 +1023,19 @@ export default function Home() {
                 <span>Most Expert</span>
               </div>
 
+              {/* Review error */}
+              {reviewError && (
+                <div className="mt-2 rounded-lg bg-red-50 border border-red-200 p-2.5">
+                  <p className="text-[11px] text-red-600">{reviewError}</p>
+                </div>
+              )}
+
               {/* Reviewer cards */}
               <div className="mt-3 space-y-2">
                 {REVIEWERS.map((reviewer) => {
                   const result = reviews.find((r) => r.reviewer_level === reviewer.level)
                   const isReviewing = reviewingLevel === reviewer.level
-                  const isExpanded = expandedReview === reviewer.level && result
+                  const isExpanded = expandedReview === reviewer.level
 
                   return (
                     <div key={reviewer.level} className={`rounded-xl border transition ${result ? reviewer.border : 'border-gray-200'}`}>
@@ -920,11 +1044,7 @@ export default function Home() {
                         className={`flex items-center justify-between px-4 py-3 cursor-pointer rounded-xl transition ${
                           result ? reviewer.bg : 'hover:bg-gray-50'
                         }`}
-                        onClick={() => {
-                          if (result) {
-                            setExpandedReview(isExpanded ? null : reviewer.level)
-                          }
-                        }}
+                        onClick={() => setExpandedReview(isExpanded ? null : reviewer.level)}
                       >
                         <div className="flex items-center gap-3">
                           <div className={`h-2.5 w-2.5 rounded-full ${result ? reviewer.dot : 'bg-gray-300'}`} />
@@ -932,6 +1052,7 @@ export default function Home() {
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-semibold text-gray-800">{reviewer.name_ko}</span>
                               <span className="text-[10px] text-gray-400">{reviewer.name}</span>
+                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${reviewer.badge}`}>Lv.{reviewer.level}</span>
                             </div>
                             <p className="text-[10px] text-gray-500 mt-0.5">{reviewer.description}</p>
                           </div>
@@ -959,60 +1080,84 @@ export default function Home() {
                         </div>
                       </div>
 
-                      {/* Expanded review details */}
-                      {isExpanded && result && (
+                      {/* Expanded content */}
+                      {isExpanded && (
                         <div className="border-t border-gray-100 px-4 py-3 space-y-3">
-                          {/* Summary */}
-                          <p className="text-xs text-gray-600 leading-5">{result.review.summary}</p>
+                          {/* Persona description (always visible) */}
+                          <div className={`rounded-lg p-2.5 ${reviewer.bg}`}>
+                            <div className="text-[10px] font-semibold uppercase text-gray-500 mb-1">Reviewer Profile</div>
+                            <p className="text-[11px] text-gray-600 leading-4">{reviewer.description}</p>
+                          </div>
 
-                          {/* Strengths */}
-                          {result.review.strengths && result.review.strengths.length > 0 && (
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase text-emerald-600 mb-1">Strengths</div>
-                              <ul className="space-y-1">
-                                {result.review.strengths.map((s, i) => (
-                                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-600">
-                                    <span className="mt-0.5 text-emerald-400">+</span>
-                                    <span>{s}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
+                          {!result ? (
+                            <button
+                              onClick={() => handleReview(reviewer.level)}
+                              disabled={isReviewing}
+                              className={`w-full rounded-lg px-3 py-2 text-xs font-semibold transition ${reviewer.badge} hover:opacity-80 disabled:opacity-50`}
+                            >
+                              {isReviewing ? 'Reviewing...' : `Start Review as ${reviewer.name_ko}`}
+                            </button>
+                          ) : (
+                            <>
+                              {/* Summary */}
+                              <p className="text-xs text-gray-600 leading-5">{result.review.summary}</p>
 
-                          {/* Issues */}
-                          {result.review.issues && result.review.issues.length > 0 && (
-                            <div>
-                              <div className="text-[10px] font-semibold uppercase text-gray-500 mb-1">
-                                Issues ({result.review.issues.length})
-                              </div>
-                              <div className="space-y-2">
-                                {result.review.issues.map((issue, i) => (
-                                  <div key={i} className="rounded-lg border border-gray-100 p-2.5">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
-                                        {issue.severity}
-                                      </span>
-                                      <span className="text-[10px] text-gray-400">{issue.category}</span>
-                                    </div>
-                                    <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
-                                    {issue.suggestion && (
-                                      <p className="mt-1 text-[11px] text-blue-600 leading-4">→ {issue.suggestion}</p>
-                                    )}
+                              {/* Strengths */}
+                              {result.review.strengths && result.review.strengths.length > 0 && (
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase text-emerald-600 mb-1">Strengths</div>
+                                  <ul className="space-y-1">
+                                    {result.review.strengths.map((s, i) => (
+                                      <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                                        <span className="mt-0.5 text-emerald-400">+</span>
+                                        <span>{s}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              {/* Issues with suggested changes */}
+                              {result.review.issues && result.review.issues.length > 0 && (
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase text-gray-500 mb-1">
+                                    Feedback ({result.review.issues.length})
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                                  <div className="space-y-2">
+                                    {result.review.issues.map((issue, i) => (
+                                      <div key={i} className="rounded-lg border border-gray-100 p-2.5">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
+                                            {issue.severity}
+                                          </span>
+                                          <span className="text-[10px] text-gray-400">{issue.category}</span>
+                                        </div>
+                                        <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
+                                        {issue.suggestion && (
+                                          <p className="mt-1 text-[11px] text-blue-600 leading-4">Suggestion: {issue.suggestion}</p>
+                                        )}
+                                        {issue.original_text && issue.revised_text && (
+                                          <div className="mt-2 space-y-1">
+                                            <div className="rounded bg-red-50 px-2 py-1 text-[10px] text-red-700 line-through">{issue.original_text}</div>
+                                            <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
 
-                          {/* Re-review button */}
-                          <button
-                            onClick={() => handleReview(reviewer.level)}
-                            disabled={isReviewing}
-                            className="text-[11px] text-gray-400 hover:text-gray-600 transition"
-                          >
-                            Re-review
-                          </button>
+                              {/* Re-review button */}
+                              <button
+                                onClick={() => handleReview(reviewer.level)}
+                                disabled={isReviewing}
+                                className="text-[11px] text-gray-400 hover:text-gray-600 transition"
+                              >
+                                Re-review
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
