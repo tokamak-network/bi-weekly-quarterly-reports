@@ -285,7 +285,7 @@ def get_model_temperature(model: Optional[str]) -> float:
         return 0.5
     lowered = model.lower()
     if lowered.startswith("gpt-5.2"):
-        return 0.4
+        return 1.0
     if lowered.startswith("gemini"):
         return 0.7
     if lowered.startswith("deepseek"):
