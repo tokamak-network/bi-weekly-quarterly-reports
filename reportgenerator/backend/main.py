@@ -491,11 +491,13 @@ def has_tokamak_client(model: Optional[str] = None) -> bool:
     return bool(selected)
 
 
-def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
+def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = None, timeout_override: Optional[int] = None, errors: Optional[List[str]] = None) -> Optional[str]:
     if not has_tokamak_client(model) or OpenAI is None:
+        if errors is not None:
+            errors.append("Tokamak client not available (missing API key or openai package)")
         return None
     selected_model = model or get_tokamak_model()
-    timeout = get_model_timeout(selected_model)
+    timeout = timeout_override or get_model_timeout(selected_model)
     client = OpenAI(base_url=get_tokamak_base_url(), api_key=get_tokamak_api_key(), timeout=timeout)
     # Try responses API for gpt-5.2 first, fall back to chat completions
     if selected_model.startswith("gpt-5.2"):
@@ -514,6 +516,8 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
                     return text.strip()
         except Exception as exc:
             print(f"Tokamak responses API failed for {selected_model}, trying chat completions: {exc}")
+            if errors is not None:
+                errors.append(f"Tokamak responses API ({selected_model}): {exc}")
 
     try:
         temperature = get_model_temperature(selected_model)
@@ -528,11 +532,15 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
         return content.strip() if content else None
     except Exception as exc:
         print(f"Tokamak chat completions failed for model {selected_model}: {exc}")
+        if errors is not None:
+            errors.append(f"Tokamak chat completions ({selected_model}): {exc}")
         return None
 
 
-def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
+def generate_with_anthropic(prompt: str, max_tokens: int, errors: Optional[List[str]] = None) -> Optional[str]:
     if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+        if errors is not None:
+            errors.append("Anthropic client not available (missing API key or anthropic package)")
         return None
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     try:
@@ -543,15 +551,17 @@ def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
         )
         text = getattr(response.content[0], "text", "").strip()
         return text or None
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append(f"Anthropic API: {exc}")
         return None
 
 
-def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
-    tokamak_response = generate_with_tokamak(prompt, max_tokens, model)
+def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None, timeout_override: Optional[int] = None, errors: Optional[List[str]] = None) -> Optional[str]:
+    tokamak_response = generate_with_tokamak(prompt, max_tokens, model, timeout_override, errors)
     if tokamak_response:
         return tokamak_response
-    anthropic_response = generate_with_anthropic(prompt, max_tokens)
+    anthropic_response = generate_with_anthropic(prompt, max_tokens, errors)
     if anthropic_response:
         return anthropic_response
     return None
@@ -2878,12 +2888,15 @@ IMPORTANT:
 - Be specific and constructive. Show exactly what to change, not just what's wrong.
 - Output ONLY the JSON. No additional text or markdown fences."""
 
-    response = generate_with_llm(prompt, max_tokens=1500, model=selected_model)
+    review_timeout = max(get_model_timeout(selected_model) * 2, 120)
+    llm_errors: List[str] = []
+    response = generate_with_llm(prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
     if not response:
+        error_detail = "; ".join(llm_errors) if llm_errors else "All AI providers failed"
         return JSONResponse({
             "success": False,
-            "error": "Failed to generate review. Check AI model availability.",
+            "error": f"Failed to generate review: {error_detail}",
             "reviewer": persona["name"],
             "reviewer_ko": persona["name_ko"],
             "reviewer_level": reviewer_level,
