@@ -1,8 +1,115 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { CalendarDays, Upload } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
+
+/* ------------------------------------------------------------------ */
+/* Types                                                               */
+/* ------------------------------------------------------------------ */
+
+interface ReviewIssue {
+  category: string
+  description: string
+  suggestion: string
+  severity: 'low' | 'medium' | 'high'
+}
+
+interface ReviewData {
+  issues: ReviewIssue[]
+  strengths: string[]
+  overall_score: number
+  summary: string
+}
+
+interface ReviewResult {
+  reviewer: string
+  reviewer_ko: string
+  reviewer_level: number
+  reviewer_description: string
+  review: ReviewData
+}
+
+interface ReportSection {
+  title: string
+  content: string
+}
+
+/* ------------------------------------------------------------------ */
+/* Constants                                                           */
+/* ------------------------------------------------------------------ */
+
+const REVIEWERS = [
+  {
+    level: 1,
+    name: 'General Reader',
+    name_ko: '일반 독자',
+    description: 'No technical background',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    text: 'text-emerald-700',
+    badge: 'bg-emerald-100 text-emerald-700',
+    dot: 'bg-emerald-400',
+  },
+  {
+    level: 2,
+    name: 'Business Analyst',
+    name_ko: '비즈니스 분석가',
+    description: 'Investment & business focus',
+    bg: 'bg-sky-50',
+    border: 'border-sky-200',
+    text: 'text-sky-700',
+    badge: 'bg-sky-100 text-sky-700',
+    dot: 'bg-sky-400',
+  },
+  {
+    level: 3,
+    name: 'Project Manager',
+    name_ko: '프로젝트 매니저',
+    description: 'Moderate technical understanding',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    text: 'text-amber-700',
+    badge: 'bg-amber-100 text-amber-700',
+    dot: 'bg-amber-400',
+  },
+  {
+    level: 4,
+    name: 'Senior Developer',
+    name_ko: '시니어 개발자',
+    description: 'Deep blockchain experience',
+    bg: 'bg-orange-50',
+    border: 'border-orange-200',
+    text: 'text-orange-700',
+    badge: 'bg-orange-100 text-orange-700',
+    dot: 'bg-orange-400',
+  },
+  {
+    level: 5,
+    name: 'Blockchain Architect',
+    name_ko: '블록체인 아키텍트',
+    description: 'Protocol & systems architect',
+    bg: 'bg-violet-50',
+    border: 'border-violet-200',
+    text: 'text-violet-700',
+    badge: 'bg-violet-100 text-violet-700',
+    dot: 'bg-violet-400',
+  },
+]
+
+const MODEL_OPTIONS = [
+  'gpt-5.2-pro',
+  'gpt-5.2-mini',
+  'gpt-4.1',
+  'o3-pro',
+  'o3-mini',
+  'o4-mini',
+  'claude-sonnet-4-5-20250514',
+  'claude-opus-4-20250514',
+  'claude-haiku-3-5-20241022',
+  'gemini-2.5-pro-preview-05-06',
+  'gemini-2.5-flash-preview-04-17',
+]
 
 const SAMPLE_MARKDOWN = `### Highlight
 
@@ -18,9 +125,8 @@ By staking with Tokamak Network, you contribute to this growing total and enjoy 
 
 1. Approximately 31% APY
 2. Various benefits such as airdrops
-3. The rights to participate in Tokamak Network DAO’s operations and decision-making process
+3. The rights to participate in Tokamak Network DAO's operations and decision-making process
 `
-
 
 const PERIOD_OPTIONS = [
   { id: 'weekly', label: 'Weekly' },
@@ -28,6 +134,10 @@ const PERIOD_OPTIONS = [
   { id: 'monthly', label: 'Monthly' },
   { id: 'custom', label: 'X-day' },
 ]
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
 
 const parseDate = (value: string) => {
   const parts = value.replace(/\s+/g, '').split('.')
@@ -67,7 +177,38 @@ const resolveReportScope = (value: string) => {
   return 'auto'
 }
 
+function renderMarkdown(md: string) {
+  return md
+    .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-gray-900 mt-6 mb-2">$1</h3>')
+    .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
+    .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
+    .replace(/^- (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:underline">$1</a>')
+}
+
+function scoreColor(score: number): string {
+  if (score >= 8) return 'text-emerald-600'
+  if (score >= 6) return 'text-amber-600'
+  return 'text-red-500'
+}
+
+function severityBadge(severity: string) {
+  if (severity === 'high') return 'bg-red-100 text-red-700'
+  if (severity === 'medium') return 'bg-amber-100 text-amber-700'
+  return 'bg-gray-100 text-gray-600'
+}
+
+/* ------------------------------------------------------------------ */
+/* Component                                                           */
+/* ------------------------------------------------------------------ */
+
 export default function Home() {
+  /* ---- Step management ---- */
+  const [step, setStep] = useState<1 | 2>(1)
+
+  /* ---- Step 1: Generate ---- */
   const [period, setPeriod] = useState('weekly')
   const [startDate, setStartDate] = useState('2026. 02. 01.')
   const [endDate, setEndDate] = useState('2026. 02. 10.')
@@ -87,34 +228,68 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null)
   const [rawMarkdown, setRawMarkdown] = useState(SAMPLE_MARKDOWN)
   const [highlight, setHighlight] = useState('')
-  const [sections, setSections] = useState<Array<{ title: string; content: string }>>([])
+  const [sections, setSections] = useState<ReportSection[]>([])
   const [stats, setStats] = useState<{ commits: number; repos: number; prs: number } | null>(null)
   const [dateRange, setDateRange] = useState<{ start: string | null; end: string | null; days: number | null } | null>(null)
   const [reportTitle, setReportTitle] = useState<string | null>(null)
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
   const [fullReport, setFullReport] = useState<string | null>(null)
   const [repoMeta, setRepoMeta] = useState<{ applied: boolean; total: number; shown: number } | null>(null)
+  const [selectedModel, setSelectedModel] = useState('gpt-5.2-pro')
+  const [showModelMenu, setShowModelMenu] = useState(false)
 
+  /* ---- Step 2: Review & Improve ---- */
+  const [reviews, setReviews] = useState<ReviewResult[]>([])
+  const [reviewingLevel, setReviewingLevel] = useState<number | null>(null)
+  const [expandedReview, setExpandedReview] = useState<number | null>(null)
+  const [improving, setImproving] = useState(false)
+  const [improvedReport, setImprovedReport] = useState<string | null>(null)
+  const [copiedFinal, setCopiedFinal] = useState(false)
+  const [viewMode, setViewMode] = useState<'original' | 'improved'>('original')
+
+  /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
     if (detectedDaysOverride) return detectedDaysOverride
     return getDaysBetween(startDate, endDate)
   }, [startDate, endDate, detectedDaysOverride])
+
   const detectedPeriod = useMemo(() => detectPeriodType(detectedDays), [detectedDays])
   const effectivePeriod = periodSource === 'manual' ? period : detectedPeriod
   const effectiveScope = resolveReportScope(effectivePeriod)
 
   const metaText = useMemo(() => {
     if (!generated || !stats) return 'No report generated yet'
-    const range = dateRange?.start && dateRange?.end ? `${dateRange.start} ~ ${dateRange.end}` : 'Range unknown'
-    return `${range} • ${stats.commits} commits • ${stats.repos} repos`
+    const range =
+      dateRange?.start && dateRange?.end
+        ? `${dateRange.start} ~ ${dateRange.end}`
+        : 'Range unknown'
+    return `${range}  |  ${stats.commits} commits  |  ${stats.repos} repos`
   }, [generated, stats, dateRange])
+
+  const modelCandidateList = [...MODEL_OPTIONS]
+  const exportContent = improvedReport ?? fullReport ?? rawMarkdown
+
+  /* ---- Drag prevention ---- */
+  useEffect(() => {
+    const preventDefaults = (event: DragEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    window.addEventListener('dragover', preventDefaults)
+    window.addEventListener('drop', preventDefaults)
+    return () => {
+      window.removeEventListener('dragover', preventDefaults)
+      window.removeEventListener('drop', preventDefaults)
+    }
+  }, [])
+
+  /* ---- Handlers ---- */
 
   const handleGenerate = async () => {
     if (!file) {
       setAnalysisError('Please upload a CSV file first.')
       return
     }
-
     setLoading(true)
     setCopied(false)
     setAnalysisError(null)
@@ -130,27 +305,23 @@ export default function Home() {
       formData.append('member_filter', 'all')
       formData.append('report_grouping', reportGrouping)
       formData.append('repo_limit', repoLimit)
+      formData.append('model', selectedModel)
 
       const response = await fetch('http://localhost:8000/api/generate', {
         method: 'POST',
         body: formData,
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to generate report')
-      }
+      if (!response.ok) throw new Error('Failed to generate report')
 
       const data = await response.json()
-      const reportSections = Array.isArray(data.sections)
-        ? data.sections.map((section: { title: string; content: string }) => ({
-            title: section.title,
-            content: section.content,
-          }))
+      const reportSections: ReportSection[] = Array.isArray(data.sections)
+        ? data.sections.map((s: ReportSection) => ({ title: s.title, content: s.content }))
         : []
 
-      const fullReportContent = typeof data.full_report === 'string' && data.full_report.trim().length > 0
-        ? data.full_report.trim()
-        : null
+      const fullReportContent =
+        typeof data.full_report === 'string' && data.full_report.trim().length > 0
+          ? data.full_report.trim()
+          : null
 
       const rawContent = fullReportContent
         ? fullReportContent
@@ -159,7 +330,7 @@ export default function Home() {
             data.headline ? `#### ${data.headline}\n\n` : '',
             `### Highlight\n\n${data.highlight}\n`,
             `### Development Activity\n`,
-            data.sections?.map((section: { content: string }) => section.content).join('\n') ?? '',
+            data.sections?.map((s: { content: string }) => s.content).join('\n') ?? '',
           ].join('\n')
 
       setHighlight(data.highlight || '')
@@ -170,21 +341,18 @@ export default function Home() {
       setRawMarkdown(rawContent)
       setRepoMeta(
         data.report_grouping === 'repository'
-          ? {
-              applied: Boolean(data.repo_limit_applied),
-              total: data.repo_count_total ?? 0,
-              shown: data.repo_count_shown ?? 0,
-            }
-          : null
+          ? { applied: Boolean(data.repo_limit_applied), total: data.repo_count_total ?? 0, shown: data.repo_count_shown ?? 0 }
+          : null,
       )
-      setStats({
-        commits: data.stats?.total_commits ?? 0,
-        repos: data.stats?.total_repos ?? 0,
-        prs: data.stats?.total_prs ?? 0,
-      })
+      setStats({ commits: data.stats?.total_commits ?? 0, repos: data.stats?.total_repos ?? 0, prs: data.stats?.total_prs ?? 0 })
       setDateRange(data.date_range || null)
       setGenerated(true)
       setActiveView('preview')
+
+      // Reset review state
+      setReviews([])
+      setImprovedReport(null)
+      setViewMode('original')
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : 'Failed to generate report')
     } finally {
@@ -192,19 +360,14 @@ export default function Home() {
     }
   }
 
-  const analyzeCsv = async (file: File) => {
+  const analyzeCsv = async (csvFile: File) => {
     setAnalyzing(true)
     setAnalysisError(null)
     try {
       const formData = new FormData()
-      formData.append('file', file)
-      const response = await fetch('http://localhost:8000/api/analyze', {
-        method: 'POST',
-        body: formData,
-      })
-      if (!response.ok) {
-        throw new Error('Failed to analyze CSV')
-      }
+      formData.append('file', csvFile)
+      const response = await fetch('http://localhost:8000/api/analyze', { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Failed to analyze CSV')
       const data = await response.json()
       const range = data.date_range || {}
       if (range.start && range.end) {
@@ -225,11 +388,11 @@ export default function Home() {
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return
-    const file = acceptedFiles[0]
-    setFileName(file.name)
-    setFile(file)
+    const dropped = acceptedFiles[0]
+    setFileName(dropped.name)
+    setFile(dropped)
     setPeriodSource('detected')
-    analyzeCsv(file)
+    analyzeCsv(dropped)
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -238,349 +401,706 @@ export default function Home() {
     multiple: false,
   })
 
-  const exportContent = fullReport ?? rawMarkdown
-
-  const handleCopy = async () => {
+  const handleCopy = async (text: string, setter: (v: boolean) => void) => {
     try {
-      await navigator.clipboard.writeText(exportContent)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
-    } catch (error) {
-      setCopied(false)
+      await navigator.clipboard.writeText(text)
+      setter(true)
+      setTimeout(() => setter(false), 1600)
+    } catch {
+      setter(false)
     }
   }
 
-  const handleDownload = () => {
-    const blob = new Blob([exportContent], { type: 'text/markdown' })
+  const handleDownload = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = 'biweekly-report.md'
+    link.download = filename
     link.click()
     URL.revokeObjectURL(url)
   }
 
-  return (
-    <div className="min-h-screen bg-white text-gray-900">
-      <main className="mx-auto w-full max-w-6xl px-6 pb-16 pt-12">
-        <div className="mb-10">
-          <h1 className="text-3xl font-semibold text-gray-900">Biweekly Report Generator</h1>
-          <p className="mt-2 text-sm text-gray-500">
-            Generate ecosystem reports with GitHub statistics, staking data, and market information.
-          </p>
-        </div>
+  const handleReview = async (level: number) => {
+    const reportText = fullReport ?? rawMarkdown
+    setReviewingLevel(level)
 
-        <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <section className="space-y-6">
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-6">
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">CSV Upload</div>
-                <div
-                  {...getRootProps()}
-                  className={`mt-3 flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center text-sm transition ${
-                    isDragActive
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                  }`}
-                >
-                  <input {...getInputProps()} />
-                  <Upload className="mb-2 h-6 w-6 text-gray-400" />
-                  <div className="font-medium">
-                    {fileName ? fileName : 'Drag & drop CSV file here'}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-400">or click to select</div>
-                </div>
-                {analyzing && (
-                  <div className="mt-2 text-xs text-blue-600">Analyzing CSV…</div>
-                )}
-                {analysisError && (
-                  <div className="mt-2 text-xs text-red-500">{analysisError}</div>
-                )}
-              </div>
+    try {
+      const formData = new FormData()
+      formData.append('report_text', reportText)
+      formData.append('report_type', reportType)
+      formData.append('reviewer_level', level.toString())
 
-              <div className="mb-4 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-400">
-                <span>Report Period</span>
-                <span className="text-[11px] font-medium text-gray-500">
-                  Detected: {detectedPeriod} {detectedDays ? `(${detectedDays} days)` : ''}
-                </span>
-              </div>
-              <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                Applying: {effectivePeriod}{' '}
-                {detectedDays ? `(${detectedDays} days)` : ''} • Source:{' '}
-                {periodSource === 'manual' ? 'manual override' : 'auto-detected'}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {PERIOD_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    onClick={() => {
-                      setPeriod(option.id)
-                      setPeriodSource('manual')
-                    }}
-                    className={`rounded-full border px-4 py-2 text-sm transition ${
-                      effectivePeriod === option.id
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+      const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Review request failed')
+
+      const data = await response.json()
+      if (data.success) {
+        setReviews((prev) => {
+          const filtered = prev.filter((r) => r.reviewer_level !== level)
+          return [...filtered, data as ReviewResult].sort((a, b) => a.reviewer_level - b.reviewer_level)
+        })
+        setExpandedReview(level)
+      }
+    } catch (error) {
+      console.error('Review failed:', error)
+    } finally {
+      setReviewingLevel(null)
+    }
+  }
+
+  const handleImprove = async () => {
+    if (reviews.length === 0) return
+    setImproving(true)
+
+    try {
+      const reportText = fullReport ?? rawMarkdown
+      const formData = new FormData()
+      formData.append('report_text', reportText)
+      formData.append('report_type', reportType)
+      formData.append('reviews_json', JSON.stringify(reviews))
+
+      const response = await fetch('http://localhost:8000/api/improve', { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Improve request failed')
+
+      const data = await response.json()
+      if (data.success) {
+        setImprovedReport(data.improved_report)
+        setViewMode('improved')
+      }
+    } catch (error) {
+      console.error('Improve failed:', error)
+    } finally {
+      setImproving(false)
+    }
+  }
+
+  /* ================================================================ */
+  /* STEP 1 — Generate                                                 */
+  /* ================================================================ */
+
+  if (step === 1) {
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <main className="mx-auto w-full max-w-6xl px-6 pb-16 pt-12">
+          <div className="mb-10">
+            <h1 className="text-3xl font-semibold text-gray-900">Biweekly Report Generator</h1>
+            <p className="mt-2 text-sm text-gray-500">
+              Generate ecosystem reports from GitHub activity data, then review and refine with AI reviewers.
+            </p>
+            {/* Step indicator */}
+            <div className="mt-4 flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
+                1. Generate
+              </span>
+              <span className="h-px w-6 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+                2. Review &amp; Improve
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            {/* Left: Controls */}
+            <section className="space-y-6">
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                {/* CSV Upload */}
+                <div className="mb-6">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-400">CSV Upload</div>
+                  <div
+                    {...getRootProps()}
+                    className={`mt-3 flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center text-sm transition ${
+                      isDragActive
+                        ? 'border-blue-500 bg-blue-50 text-blue-700'
                         : 'border-gray-200 text-gray-500 hover:border-gray-300'
                     }`}
                   >
-                    {option.id === 'custom' && detectedDays ? `${detectedDays}-day` : option.label}
-                  </button>
-                ))}
-              </div>
+                    <input {...getInputProps()} />
+                    <Upload className="mb-2 h-6 w-6 text-gray-400" />
+                    <div className="font-medium">{fileName ? fileName : 'Drag & drop CSV file here'}</div>
+                    <div className="mt-1 text-xs text-gray-400">or click to select</div>
+                  </div>
+                  {analyzing && <div className="mt-2 text-xs text-blue-600">Analyzing CSV...</div>}
+                  {analysisError && <div className="mt-2 text-xs text-red-500">{analysisError}</div>}
+                </div>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-2">
-                <div className="rounded-xl border border-gray-200 p-4">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">Start Date</label>
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-                    <input
-                      type="text"
-                      value={startDate}
-                      onChange={(event) => {
-                        setStartDate(event.target.value)
-                        setPeriodSource('manual')
-                        setDetectedDaysOverride(null)
-                      }}
-                      className="w-full text-sm text-gray-700 focus:outline-none"
-                    />
-                    <button className="text-gray-400 hover:text-gray-600" aria-label="Open start date calendar">
-                      <CalendarDays className="h-4 w-4" />
-                    </button>
-                  </div>
+                {/* Period */}
+                <div className="mb-4 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  <span>Report Period</span>
+                  <span className="text-[11px] font-medium text-gray-500">
+                    Detected: {detectedPeriod} {detectedDays ? `(${detectedDays} days)` : ''}
+                  </span>
                 </div>
-                <div className="rounded-xl border border-gray-200 p-4">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">End Date</label>
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
-                    <input
-                      type="text"
-                      value={endDate}
-                      onChange={(event) => {
-                        setEndDate(event.target.value)
-                        setPeriodSource('manual')
-                        setDetectedDaysOverride(null)
-                      }}
-                      className="w-full text-sm text-gray-700 focus:outline-none"
-                    />
-                    <button className="text-gray-400 hover:text-gray-600" aria-label="Open end date calendar">
-                      <CalendarDays className="h-4 w-4" />
-                    </button>
-                  </div>
+                <div className="mb-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  Applying: {effectivePeriod} {detectedDays ? `(${detectedDays} days)` : ''} | Source:{' '}
+                  {periodSource === 'manual' ? 'manual override' : 'auto-detected'}
                 </div>
-              </div>
+                <div className="flex flex-wrap gap-2">
+                  {PERIOD_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => { setPeriod(option.id); setPeriodSource('manual') }}
+                      className={`rounded-full border px-4 py-2 text-sm transition ${
+                        effectivePeriod === option.id
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      {option.id === 'custom' && detectedDays ? `${detectedDays}-day` : option.label}
+                    </button>
+                  ))}
+                </div>
 
-              <div className="mt-6 text-xs font-semibold uppercase tracking-wide text-gray-400">Options</div>
-              <div className="mt-4 space-y-3 rounded-xl border border-gray-200 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">Report type</div>
-                    <p className="mt-1 text-xs text-gray-500">Choose the audience focus for generated summaries.</p>
+                {/* Date pickers */}
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">Start Date</label>
+                    <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                      <input
+                        type="text"
+                        value={startDate}
+                        onChange={(e) => { setStartDate(e.target.value); setPeriodSource('manual'); setDetectedDaysOverride(null) }}
+                        className="w-full text-sm text-gray-700 focus:outline-none"
+                      />
+                      <CalendarDays className="h-4 w-4 text-gray-400" />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setReportType('public')}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        reportType === 'public'
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      Public
-                    </button>
-                    <button
-                      onClick={() => setReportType('technical')}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        reportType === 'technical'
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      Technical
-                    </button>
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-400">End Date</label>
+                    <div className="mt-3 flex items-center justify-between rounded-lg border border-gray-200 px-3 py-2">
+                      <input
+                        type="text"
+                        value={endDate}
+                        onChange={(e) => { setEndDate(e.target.value); setPeriodSource('manual'); setDetectedDaysOverride(null) }}
+                        className="w-full text-sm text-gray-700 focus:outline-none"
+                      />
+                      <CalendarDays className="h-4 w-4 text-gray-400" />
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">Use AI for summaries</div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Toggles Tokamak AI summaries when credentials are available.
-                    </p>
+
+                {/* Options */}
+                <div className="mt-6 text-xs font-semibold uppercase tracking-wide text-gray-400">Options</div>
+                <div className="mt-4 space-y-3 rounded-xl border border-gray-200 p-4">
+                  {/* Report type */}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">Report type</div>
+                      <p className="mt-1 text-xs text-gray-500">Choose the audience focus for generated summaries.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {(['public', 'technical'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setReportType(t)}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                            reportType === t
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          {t === 'public' ? 'Public' : 'Technical'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setUseAI((prev) => !prev)}
-                    className={`flex h-7 w-12 items-center rounded-full px-1 transition ${
-                      useAI ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  >
-                    <span
-                      className={`h-5 w-5 rounded-full bg-white shadow transition ${
-                        useAI ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">Report grouping</div>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Choose repository-based or project-based sections.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
+                  {/* AI toggle */}
+                  <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">Use AI for summaries</div>
+                      <p className="mt-1 text-xs text-gray-500">Toggles Tokamak AI summaries when credentials are available.</p>
+                    </div>
                     <button
-                      onClick={() => setReportGrouping('repository')}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        reportGrouping === 'repository'
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
+                      onClick={() => setUseAI((prev) => !prev)}
+                      className={`flex h-7 w-12 items-center rounded-full px-1 transition ${useAI ? 'bg-blue-600' : 'bg-gray-200'}`}
                     >
-                      Repository
-                    </button>
-                    <button
-                      onClick={() => setReportGrouping('project')}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                        reportGrouping === 'project'
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      Project
+                      <span className={`h-5 w-5 rounded-full bg-white shadow transition ${useAI ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
                   </div>
-                </div>
-                {reportGrouping === 'repository' && (
+                  {/* AI Model Selection */}
+                  <div className="rounded-lg border border-gray-200 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">AI model selection</div>
+                        <p className="mt-1 text-xs text-gray-500">Choose a model to generate the report.</p>
+                      </div>
+                      <div className="text-xs font-medium text-gray-500">{selectedModel || 'None'}</div>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowModelMenu((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+                      >
+                        <span className="truncate">{selectedModel || 'Select model'}</span>
+                        <span className="ml-3 text-xs text-gray-400">{showModelMenu ? 'Hide' : 'Edit'}</span>
+                      </button>
+                      {showModelMenu && (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {modelCandidateList.map((modelName) => (
+                              <label key={modelName} className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                  type="radio"
+                                  name="report-model"
+                                  value={modelName}
+                                  checked={selectedModel === modelName}
+                                  onChange={() => { setSelectedModel(modelName); setShowModelMenu(false) }}
+                                  className="h-4 w-4 border-gray-300 text-blue-600"
+                                />
+                                <span>{modelName}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedModel('gpt-5.2-pro')}
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:border-gray-300"
+                        >
+                          Reset to default
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-gray-500">The selected model is used for report generation.</p>
+                  </div>
+                  {/* Grouping */}
                   <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
                     <div>
-                      <div className="text-sm font-medium text-gray-800">Repository limit</div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Set 0 to include all. Use a smaller number to group remaining repos.
-                      </p>
-                      {repoMeta && (
-                        <p className="mt-2 text-xs font-medium text-gray-600">
-                          Showing {repoMeta.shown} of {repoMeta.total} repos{repoMeta.applied ? ' (others grouped)' : ''}
-                        </p>
-                      )}
+                      <div className="text-sm font-medium text-gray-800">Report grouping</div>
+                      <p className="mt-1 text-xs text-gray-500">Choose repository-based or project-based sections.</p>
                     </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={repoLimit}
-                      onChange={(event) => setRepoLimit(event.target.value)}
-                      className="w-20 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none"
-                    />
+                    <div className="flex items-center gap-2">
+                      {(['repository', 'project'] as const).map((g) => (
+                        <button
+                          key={g}
+                          onClick={() => setReportGrouping(g)}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                            reportGrouping === g
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          {g === 'repository' ? 'Repository' : 'Project'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                )}
-              </div>
-
-              <button
-                onClick={handleGenerate}
-                className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-              >
-                {loading ? 'Generating...' : '🚀 Generate Report'}
-              </button>
-            </div>
-          </section>
-
-          <section className="space-y-6">
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Generated Report</h2>
-                  {reportTitle && (
-                    <p className="mt-2 text-sm font-semibold text-gray-800">{reportTitle}</p>
-                  )}
-                  {reportHeadline && (
-                    <p className="mt-1 text-sm text-gray-600">{reportHeadline}</p>
-                  )}
-                  <p className="mt-2 text-xs text-gray-500">{metaText}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setActiveView('preview')}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      activeView === 'preview'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
-                    Preview
-                  </button>
-                  <button
-                    onClick={() => setActiveView('raw')}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                      activeView === 'raw'
-                        ? 'bg-blue-50 text-blue-600'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}
-                  >
-                    Raw
-                  </button>
-                  <button
-                    onClick={handleCopy}
-                    className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500"
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                  <button
-                    onClick={handleDownload}
-                    className="rounded-lg bg-green-500 px-3 py-1.5 text-xs font-semibold text-white"
-                  >
-                    Download .md
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-5 h-[460px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-5">
-                {generated ? (
-                  activeView === 'preview' ? (
-                    fullReport ? (
-                      <div
-                        className="whitespace-pre-wrap text-sm leading-6 text-gray-700"
-                        dangerouslySetInnerHTML={{
-                          __html: fullReport
-                            .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-gray-900 mt-6 mb-2">$1</h3>')
-                            .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
-                            .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
-                            .replace(/^- (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
-                            .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
-                            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:underline">$1</a>')
-                        }}
+                  {/* Repo limit */}
+                  {reportGrouping === 'repository' && (
+                    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">Repository limit</div>
+                        <p className="mt-1 text-xs text-gray-500">Set 0 to include all. Use a smaller number to group remaining repos.</p>
+                        {repoMeta && (
+                          <p className="mt-2 text-xs font-medium text-gray-600">
+                            Showing {repoMeta.shown} of {repoMeta.total} repos{repoMeta.applied ? ' (others grouped)' : ''}
+                          </p>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={repoLimit}
+                        onChange={(e) => setRepoLimit(e.target.value)}
+                        className="w-20 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none"
                       />
-                    ) : (
-                      <div className="space-y-6 text-sm text-gray-700">
-                        <div>
-                          <h3 className="text-base font-semibold text-gray-900">Highlight</h3>
-                          <p className="mt-2 leading-6">{highlight || 'No highlight available.'}</p>
-                        </div>
-                        {sections.map((section, index) => (
-                          <div key={`${section.title}-${index}`}>
-                            <h3 className="text-base font-semibold text-gray-900">{section.title}</h3>
-                            <div
-                              className="mt-2 whitespace-pre-wrap leading-6 text-gray-700"
-                              dangerouslySetInnerHTML={{
-                                __html: section.content
-                                  .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
-                                  .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
-                                  .replace(/^- (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
-                                  .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-600 hover:underline">$1</a>')
-                              }}
-                            />
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={handleGenerate}
+                  disabled={loading}
+                  className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? 'Generating...' : 'Generate Report'}
+                </button>
+              </div>
+            </section>
+
+            {/* Right: Preview */}
+            <section className="space-y-6">
+              <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Generated Report</h2>
+                    {reportTitle && <p className="mt-2 text-sm font-semibold text-gray-800">{reportTitle}</p>}
+                    {reportHeadline && <p className="mt-1 text-sm text-gray-600">{reportHeadline}</p>}
+                    <p className="mt-2 text-xs text-gray-500">{metaText}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(['preview', 'raw'] as const).map((v) => (
+                      <button
+                        key={v}
+                        onClick={() => setActiveView(v)}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                          activeView === v ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {v === 'preview' ? 'Preview' : 'Raw'}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => handleCopy(fullReport ?? rawMarkdown, setCopied)}
+                      className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500"
+                    >
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 h-[460px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-5">
+                  {generated ? (
+                    activeView === 'preview' ? (
+                      fullReport ? (
+                        <div
+                          className="whitespace-pre-wrap text-sm leading-6 text-gray-700"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(fullReport) }}
+                        />
+                      ) : (
+                        <div className="space-y-6 text-sm text-gray-700">
+                          <div>
+                            <h3 className="text-base font-semibold text-gray-900">Highlight</h3>
+                            <p className="mt-2 leading-6">{highlight || 'No highlight available.'}</p>
                           </div>
-                        ))}
+                          {sections.map((section, index) => (
+                            <div key={`${section.title}-${index}`}>
+                              <h3 className="text-base font-semibold text-gray-900">{section.title}</h3>
+                              <div
+                                className="mt-2 whitespace-pre-wrap leading-6 text-gray-700"
+                                dangerouslySetInnerHTML={{ __html: renderMarkdown(section.content) }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      <div className="h-full whitespace-pre-wrap rounded-lg bg-white p-4 font-mono text-xs text-gray-700">
+                        {rawMarkdown}
                       </div>
                     )
                   ) : (
-                    <div className="h-full whitespace-pre-wrap rounded-lg bg-white p-4 font-mono text-xs text-gray-700">
-                      {rawMarkdown}
+                    <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                      Generate a report to preview the output.
                     </div>
-                  )
-                ) : (
-                  <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                    Generate a report to preview the output.
+                  )}
+                </div>
+
+                {/* Proceed to Review */}
+                {generated && (
+                  <button
+                    onClick={() => setStep(2)}
+                    className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800"
+                  >
+                    Proceed to Review &amp; Improve →
+                  </button>
+                )}
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  /* ================================================================ */
+  /* STEP 2 — Review & Improve                                         */
+  /* ================================================================ */
+
+  const currentReport = viewMode === 'improved' && improvedReport ? improvedReport : (fullReport ?? rawMarkdown)
+
+  return (
+    <div className="min-h-screen bg-white text-gray-900">
+      <main className="mx-auto w-full max-w-7xl px-6 pb-16 pt-8">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <button
+              onClick={() => setStep(1)}
+              className="mb-2 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
+            >
+              ← Back to Generator
+            </button>
+            <h1 className="text-2xl font-semibold text-gray-900">Review &amp; Improve</h1>
+            <p className="mt-1 text-xs text-gray-500">{metaText}</p>
+          </div>
+          {/* Step indicator */}
+          <div className="flex items-center gap-3 text-xs">
+            <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+              1. Generate
+            </span>
+            <span className="h-px w-6 bg-gray-300" />
+            <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
+              2. Review &amp; Improve
+            </span>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+          {/* Left: Expanded Report View */}
+          <div className="space-y-4">
+            {/* View toggle bar */}
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase ${
+                  reportType === 'public' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {reportType}
+                </span>
+                {improvedReport && (
+                  <div className="flex items-center gap-1 ml-2">
+                    {(['original', 'improved'] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setViewMode(m)}
+                        className={`rounded-lg px-3 py-1 text-xs font-medium transition ${
+                          viewMode === m
+                            ? m === 'improved'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-gray-100 text-gray-700'
+                            : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                      >
+                        {m === 'original' ? 'Original' : 'Improved'}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleCopy(currentReport, setCopiedFinal)}
+                  className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-200 transition"
+                >
+                  {copiedFinal ? 'Copied!' : 'Copy'}
+                </button>
+                <button
+                  onClick={() => handleDownload(currentReport, `report-${viewMode}.md`)}
+                  className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 transition"
+                >
+                  Download .md
+                </button>
+              </div>
             </div>
-          </section>
+
+            {/* Report content */}
+            <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+              <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
+                <div
+                  className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(currentReport) }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Right: Reviewer Panel */}
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-900">Report Reviewers</h3>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Select reviewers to evaluate the report from different perspectives.
+              </p>
+
+              {/* Reviewer expertise scale */}
+              <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400">
+                <span>Most Public</span>
+                <span className="h-px flex-1 mx-2 bg-gradient-to-r from-emerald-200 via-amber-200 to-violet-200" />
+                <span>Most Expert</span>
+              </div>
+
+              {/* Reviewer cards */}
+              <div className="mt-3 space-y-2">
+                {REVIEWERS.map((reviewer) => {
+                  const result = reviews.find((r) => r.reviewer_level === reviewer.level)
+                  const isReviewing = reviewingLevel === reviewer.level
+                  const isExpanded = expandedReview === reviewer.level && result
+
+                  return (
+                    <div key={reviewer.level} className={`rounded-xl border transition ${result ? reviewer.border : 'border-gray-200'}`}>
+                      {/* Card header */}
+                      <div
+                        className={`flex items-center justify-between px-4 py-3 cursor-pointer rounded-xl transition ${
+                          result ? reviewer.bg : 'hover:bg-gray-50'
+                        }`}
+                        onClick={() => {
+                          if (result) {
+                            setExpandedReview(isExpanded ? null : reviewer.level)
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`h-2.5 w-2.5 rounded-full ${result ? reviewer.dot : 'bg-gray-300'}`} />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-gray-800">{reviewer.name_ko}</span>
+                              <span className="text-[10px] text-gray-400">{reviewer.name}</span>
+                            </div>
+                            <p className="text-[10px] text-gray-500 mt-0.5">{reviewer.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {result && (
+                            <span className={`text-sm font-bold ${scoreColor(result.review.overall_score)}`}>
+                              {result.review.overall_score}/10
+                            </span>
+                          )}
+                          {!result && !isReviewing && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleReview(reviewer.level) }}
+                              className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition ${reviewer.badge} hover:opacity-80`}
+                            >
+                              Review
+                            </button>
+                          )}
+                          {isReviewing && (
+                            <span className="flex items-center gap-1 text-[11px] text-gray-400">
+                              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+                              Reviewing...
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Expanded review details */}
+                      {isExpanded && result && (
+                        <div className="border-t border-gray-100 px-4 py-3 space-y-3">
+                          {/* Summary */}
+                          <p className="text-xs text-gray-600 leading-5">{result.review.summary}</p>
+
+                          {/* Strengths */}
+                          {result.review.strengths && result.review.strengths.length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-semibold uppercase text-emerald-600 mb-1">Strengths</div>
+                              <ul className="space-y-1">
+                                {result.review.strengths.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                                    <span className="mt-0.5 text-emerald-400">+</span>
+                                    <span>{s}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Issues */}
+                          {result.review.issues && result.review.issues.length > 0 && (
+                            <div>
+                              <div className="text-[10px] font-semibold uppercase text-gray-500 mb-1">
+                                Issues ({result.review.issues.length})
+                              </div>
+                              <div className="space-y-2">
+                                {result.review.issues.map((issue, i) => (
+                                  <div key={i} className="rounded-lg border border-gray-100 p-2.5">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
+                                        {issue.severity}
+                                      </span>
+                                      <span className="text-[10px] text-gray-400">{issue.category}</span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
+                                    {issue.suggestion && (
+                                      <p className="mt-1 text-[11px] text-blue-600 leading-4">→ {issue.suggestion}</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Re-review button */}
+                          <button
+                            onClick={() => handleReview(reviewer.level)}
+                            disabled={isReviewing}
+                            className="text-[11px] text-gray-400 hover:text-gray-600 transition"
+                          >
+                            Re-review
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Review all button */}
+              {reviews.length < REVIEWERS.length && (
+                <button
+                  onClick={async () => {
+                    for (const reviewer of REVIEWERS) {
+                      if (!reviews.find((r) => r.reviewer_level === reviewer.level)) {
+                        await handleReview(reviewer.level)
+                      }
+                    }
+                  }}
+                  disabled={reviewingLevel !== null}
+                  className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
+                >
+                  {reviewingLevel !== null ? 'Reviewing...' : `Review All (${REVIEWERS.length - reviews.length} remaining)`}
+                </button>
+              )}
+            </div>
+
+            {/* Improve Section */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-gray-900">AI Improvement</h3>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Use reviewer feedback to generate an improved version of the report.
+              </p>
+
+              {reviews.length > 0 && (
+                <div className="mt-3 rounded-lg bg-gray-50 p-3">
+                  <div className="flex items-center justify-between text-xs text-gray-600">
+                    <span>{reviews.length} review{reviews.length > 1 ? 's' : ''} collected</span>
+                    <span className="font-medium">
+                      Avg score: {(reviews.reduce((sum, r) => sum + r.review.overall_score, 0) / reviews.length).toFixed(1)}/10
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {reviews.map((r) => (
+                      <span key={r.reviewer_level} className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                        REVIEWERS.find((rv) => rv.level === r.reviewer_level)?.badge ?? 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {r.reviewer_ko} {r.review.overall_score}/10
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleImprove}
+                disabled={reviews.length === 0 || improving}
+                className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {improving ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Improving...
+                  </span>
+                ) : reviews.length === 0 ? (
+                  'Run at least 1 review first'
+                ) : (
+                  'Improve Report with AI'
+                )}
+              </button>
+
+              {improvedReport && (
+                <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-200 text-[10px]">&#10003;</span>
+                    Improved report generated
+                  </div>
+                  <p className="mt-1 text-[11px] text-emerald-600">
+                    Switch to &quot;Improved&quot; tab above to view the result.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </main>
     </div>
