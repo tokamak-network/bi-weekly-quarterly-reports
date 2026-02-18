@@ -127,6 +127,81 @@ DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
 DEFAULT_TOKAMAK_TIMEOUT = 30
 MAX_AI_REPO_LIMIT = 5
 
+REVIEWER_PERSONAS = [
+    {
+        "level": 1,
+        "name": "General Reader",
+        "name_ko": "일반 독자",
+        "description": "Non-technical reader with no blockchain background",
+        "prompt_prefix": (
+            "You are a general reader with no technical or blockchain background. "
+            "You are reading a company progress report for the first time.\n\n"
+            "Review the report and provide honest feedback:\n"
+            "1. Identify any sentences or terms you don't understand.\n"
+            "2. Point out any jargon that needs simpler explanation.\n"
+            "3. Assess whether the overall message and progress are clear.\n"
+            "4. Note if the report feels too long, too short, or well-balanced."
+        ),
+    },
+    {
+        "level": 2,
+        "name": "Business Analyst",
+        "name_ko": "비즈니스 분석가",
+        "description": "Business professional evaluating investment potential",
+        "prompt_prefix": (
+            "You are a business analyst and potential investor evaluating a blockchain company's progress report.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are the business implications and value propositions clear?\n"
+            "2. Is the progress meaningful from an investment perspective?\n"
+            "3. Are there missing market context or competitive insights?\n"
+            "4. Does the report convey confidence and momentum?"
+        ),
+    },
+    {
+        "level": 3,
+        "name": "Project Manager",
+        "name_ko": "프로젝트 매니저",
+        "description": "PM with moderate technical understanding",
+        "prompt_prefix": (
+            "You are a project manager with moderate technical understanding of blockchain development.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are milestones and deliverables clearly communicated?\n"
+            "2. Is there a clear narrative of progress and direction?\n"
+            "3. Are there gaps in the project timeline or missing status updates?\n"
+            "4. Is the scope of work appropriately represented?"
+        ),
+    },
+    {
+        "level": 4,
+        "name": "Senior Developer",
+        "name_ko": "시니어 개발자",
+        "description": "Experienced developer familiar with blockchain systems",
+        "prompt_prefix": (
+            "You are a senior software developer with deep blockchain and distributed systems experience.\n\n"
+            "Review the report and provide technical feedback:\n"
+            "1. Is the technical content accurate and appropriately detailed?\n"
+            "2. Are engineering achievements properly represented?\n"
+            "3. Are there oversimplifications or missing technical context?\n"
+            "4. Is the technical progression logical and well-articulated?"
+        ),
+    },
+    {
+        "level": 5,
+        "name": "Blockchain Architect",
+        "name_ko": "블록체인 아키텍트",
+        "description": "Protocol researcher and systems architect",
+        "prompt_prefix": (
+            "You are a blockchain architect and protocol researcher with expertise in ZK proofs, "
+            "rollup architectures, and DeFi systems.\n\n"
+            "Review the report and provide expert-level feedback:\n"
+            "1. Are architecture and protocol-level decisions well-justified?\n"
+            "2. Is there sufficient depth on system design, security, and performance?\n"
+            "3. Are there missing considerations for scalability or interoperability?\n"
+            "4. Does the technical narrative align with industry best practices?"
+        ),
+    },
+]
+
 
 def refresh_env() -> None:
     if ENV_PATH is None:
@@ -172,8 +247,6 @@ def get_model_timeout(model: Optional[str]) -> int:
     lowered = model.lower()
     if lowered.startswith("gemini"):
         return max(10, min(base, 20))
-    if lowered.startswith("qwen"):
-        return max(10, min(base, 25))
     if lowered.startswith("deepseek"):
         return max(10, min(base, 25))
     if lowered.startswith("gpt-5"):
@@ -189,8 +262,6 @@ def get_model_temperature(model: Optional[str]) -> float:
         return 0.4
     if lowered.startswith("gemini"):
         return 0.7
-    if lowered.startswith("qwen"):
-        return 0.6
     if lowered.startswith("deepseek"):
         return 0.6
     return 0.5
@@ -203,8 +274,6 @@ def model_style_hint(model: Optional[str], report_type: str) -> str:
     if report_type == "public":
         if lowered.startswith("gemini"):
             return "Use crisp, energetic phrasing with clear benefits."
-        if lowered.startswith("qwen"):
-            return "Use structured, balanced phrasing with measured optimism."
         if lowered.startswith("deepseek"):
             return "Use analytical, concrete phrasing with practical outcomes."
         if lowered.startswith("gpt-5"):
@@ -212,8 +281,6 @@ def model_style_hint(model: Optional[str], report_type: str) -> str:
     else:
         if lowered.startswith("gemini"):
             return "Be concise and pragmatic; emphasize operational changes."
-        if lowered.startswith("qwen"):
-            return "Be systematic and precise; emphasize implementation details."
         if lowered.startswith("deepseek"):
             return "Be analytical and engineering-first; emphasize mechanisms."
         if lowered.startswith("gpt-5"):
@@ -2579,6 +2646,199 @@ async def health_check():
         "tokamak_models": get_tokamak_models() or [get_tokamak_model()],
         "api_key_set": bool(get_tokamak_api_key()),
     }
+
+
+@app.get("/api/reviewers")
+async def list_reviewers():
+    return JSONResponse({
+        "reviewers": [
+            {
+                "level": p["level"],
+                "name": p["name"],
+                "name_ko": p["name_ko"],
+                "description": p["description"],
+            }
+            for p in REVIEWER_PERSONAS
+        ],
+    })
+
+
+@app.post("/api/review")
+async def review_report(
+    report_text: str = Form(...),
+    report_type: str = Form("public"),
+    reviewer_level: int = Form(3),
+    model: Optional[str] = Form(None),
+):
+    """Review a generated report using a virtual reviewer persona."""
+    import json as _json
+
+    refresh_env()
+
+    persona = None
+    for p in REVIEWER_PERSONAS:
+        if p["level"] == reviewer_level:
+            persona = p
+            break
+
+    if not persona:
+        raise HTTPException(status_code=400, detail=f"Invalid reviewer level: {reviewer_level}")
+
+    selected_model = model or get_tokamak_model()
+
+    report_type_label = (
+        "Public/Investor-facing report" if report_type == "public"
+        else "Technical development report"
+    )
+
+    prompt = f"""{persona["prompt_prefix"]}
+
+[Report Type]
+{report_type_label}
+
+[Report to Review]
+{report_text}
+
+[Output Format]
+Provide your review as JSON:
+{{
+  "issues": [
+    {{
+      "category": "clarity|accuracy|depth|structure|tone",
+      "description": "What the issue is",
+      "suggestion": "How to fix it",
+      "severity": "low|medium|high"
+    }}
+  ],
+  "strengths": ["What the report does well"],
+  "overall_score": <1-10>,
+  "summary": "2-3 sentence overall assessment"
+}}
+
+Output ONLY the JSON. No additional text or markdown fences."""
+
+    response = generate_with_llm(prompt, max_tokens=1500, model=selected_model)
+
+    if not response:
+        return JSONResponse({
+            "success": False,
+            "error": "Failed to generate review. Check AI model availability.",
+            "reviewer": persona["name"],
+            "reviewer_ko": persona["name_ko"],
+            "reviewer_level": reviewer_level,
+        })
+
+    cleaned = response.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    try:
+        review_data = _json.loads(cleaned)
+    except (_json.JSONDecodeError, ValueError):
+        review_data = {
+            "issues": [],
+            "strengths": [],
+            "overall_score": 5,
+            "summary": cleaned,
+        }
+
+    return JSONResponse({
+        "success": True,
+        "reviewer": persona["name"],
+        "reviewer_ko": persona["name_ko"],
+        "reviewer_level": reviewer_level,
+        "reviewer_description": persona["description"],
+        "review": review_data,
+    })
+
+
+@app.post("/api/improve")
+async def improve_report(
+    report_text: str = Form(...),
+    report_type: str = Form("public"),
+    reviews_json: str = Form("[]"),
+    model: Optional[str] = Form(None),
+):
+    """Improve a report based on reviewer feedback."""
+    import json as _json
+
+    refresh_env()
+
+    try:
+        reviews = _json.loads(reviews_json)
+    except (_json.JSONDecodeError, ValueError):
+        reviews = []
+
+    if not reviews:
+        raise HTTPException(status_code=400, detail="No review feedback provided")
+
+    selected_model = model or get_tokamak_model()
+
+    feedback_text = ""
+    for review in reviews:
+        reviewer_name = review.get("reviewer", "Reviewer")
+        review_data = review.get("review", {})
+        issues = review_data.get("issues", [])
+        strengths = review_data.get("strengths", [])
+        summary = review_data.get("summary", "")
+
+        feedback_text += f"\n--- {reviewer_name} (Score: {review_data.get('overall_score', 'N/A')}/10) ---\n"
+        feedback_text += f"Summary: {summary}\n"
+        if strengths:
+            feedback_text += "Strengths: " + "; ".join(strengths) + "\n"
+        for issue in issues:
+            severity = issue.get("severity", "medium")
+            category = issue.get("category", "")
+            desc = issue.get("description", "")
+            suggestion = issue.get("suggestion", "")
+            feedback_text += f"- [{severity}] {category}: {desc} -> {suggestion}\n"
+
+    if report_type == "public":
+        tone_instruction = (
+            "Maintain an accessible, benefit-oriented tone. "
+            "Avoid technical jargon. Focus on user impact and business value."
+        )
+    else:
+        tone_instruction = (
+            "Maintain a professional, technically precise tone. "
+            "Include specific technical details, architecture decisions, and implementation specifics."
+        )
+
+    prompt = f"""[Role]
+You are a senior technical writer at a blockchain company. Your task is to improve a report based on reviewer feedback.
+
+[Instructions]
+1. Read the original report and the reviewer feedback carefully.
+2. Address each reviewer's concerns where valid.
+3. {tone_instruction}
+4. Preserve all factual content — do not invent or fabricate information.
+5. Keep the same overall structure (headers, sections).
+6. Improve clarity, flow, and readability.
+7. Output ONLY the improved report in markdown. No meta-commentary.
+
+[Original Report]
+{report_text}
+
+[Reviewer Feedback]
+{feedback_text}
+
+[Improved Report]"""
+
+    improved = generate_with_llm(prompt, max_tokens=3000, model=selected_model)
+
+    if not improved:
+        return JSONResponse({
+            "success": False,
+            "error": "Failed to improve report. Check AI model availability.",
+        })
+
+    return JSONResponse({
+        "success": True,
+        "improved_report": improved.strip(),
+        "model": selected_model,
+        "reviews_applied": len(reviews),
+    })
 
 
 if __name__ == "__main__":
