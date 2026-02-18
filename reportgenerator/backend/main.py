@@ -157,6 +157,7 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
 
 DEFAULT_TOKAMAK_BASE_URL = "https://api.ai.tokamak.network"
 DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
+DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex"]
 DEFAULT_TOKAMAK_TIMEOUT = 30
 MAX_AI_REPO_LIMIT = 20
 
@@ -303,7 +304,9 @@ def get_tokamak_models() -> List[str]:
     raw = os.environ.get("TOKAMAK_MODELS", "")
     if not raw:
         raw = os.environ.get("TOKAMAK_AVAILABLE_MODELS", "")
-    return [model.strip() for model in raw.split(",") if model.strip()]
+    if raw:
+        return [model.strip() for model in raw.split(",") if model.strip()]
+    return DEFAULT_TOKAMAK_MODELS
 
 
 def get_tokamak_timeout() -> int:
