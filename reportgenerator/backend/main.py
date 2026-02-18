@@ -472,6 +472,9 @@ def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None)
     tokamak_response = generate_with_tokamak(prompt, max_tokens, model)
     if tokamak_response:
         return tokamak_response
+    anthropic_response = generate_with_anthropic(prompt, max_tokens)
+    if anthropic_response:
+        return anthropic_response
     return None
 
 
@@ -1850,45 +1853,20 @@ def generate_repo_public_section(
             "focusing on continuous maintenance, documentation, and automated testing to ensure a robust ecosystem.\n"
         )
 
-    total_commits = summary.get("total_commits", 0)
-    merged_prs = summary.get("merged_prs", 0)
-    if total_commits >= 40 or merged_prs >= 6:
-        limit = 5
-    elif total_commits >= 25 or merged_prs >= 4:
-        limit = 4
-    elif total_commits >= 12 or merged_prs >= 2:
-        limit = 3
+    info = {
+        "number": "",
+        "title": repo_name,
+        "context": f"Repository activity summary for {repo_name}.",
+        "overview_url": f"https://github.com/tokamak-network/{repo_name}",
+        "business_focus": summary.get("business_focus", "Ecosystem development"),
+    }
+    if use_ai and has_tokamak_client(model):
+        section = generate_with_ai_public(repo_name, summary, info, model=model)
     else:
-        limit = 2
-
-    deliverables = extract_public_pr_deliverables(summary.get("merged_pr_list", []), limit)
-    if len(deliverables) < limit:
-        deliverables.extend(
-            extract_public_commit_deliverables(summary.get("top_commits", []), limit - len(deliverables))
-        )
-    deliverables = dedupe_prefixes(deliverables)
-    if not deliverables:
-        deliverables = ["Improved core infrastructure for better performance"]
-
-    keywords = extract_repo_keywords(summary.get("top_commits", []), summary.get("merged_pr_list", []), 5)
-    used_keywords: Set[str] = set()
-
-    cleaned_items = []
-    for item in deliverables[:limit]:
-        cleaned = ensure_public_verb(enrich_public_deliverable(item, "", repo_name))
-        cleaned = rewrite_public_jargon(cleaned, repo_name)
-        cleaned = diversify_public_verb(cleaned, repo_name)
-        cleaned = inject_keywords(cleaned, keywords, used_keywords, 1)
-        cleaned_items.append(cleaned)
-
-    if not cleaned_items:
-        return ""
-
-    summary_sentence = f"{cleaned_items[0]}."
-    bullets = [f"* {item}." for item in cleaned_items[1:]]
-    if bullets:
-        return summary_sentence + "\n" + "\n".join(bullets) + "\n"
-    return summary_sentence + "\n"
+        section = generate_basic_public(repo_name, summary, info)
+    if section:
+        return section
+    return generate_basic_public(repo_name, summary, info)
 
 
 def generate_with_ai_technical(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
