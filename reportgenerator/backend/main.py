@@ -3018,10 +3018,89 @@ IMPORTANT:
         review_data["issues"] = []
     if not isinstance(review_data.get("strengths"), list):
         review_data["strengths"] = []
-    if not isinstance(review_data.get("overall_score"), (int, float)):
-        review_data["overall_score"] = 5
-    if not isinstance(review_data.get("summary"), str):
+
+    # Parse overall_score from various formats (e.g., "5/10", "5 out of 10", "5.0")
+    raw_score = review_data.get("overall_score")
+    if not isinstance(raw_score, (int, float)):
+        if isinstance(raw_score, str):
+            score_match = re.search(r'(\d+(?:\.\d+)?)', raw_score)
+            review_data["overall_score"] = float(score_match.group(1)) if score_match else 5
+        else:
+            review_data["overall_score"] = 5
+
+    if not isinstance(review_data.get("summary"), str) or not review_data["summary"].strip():
         review_data["summary"] = "Review completed."
+
+    # Validate that issue objects have required fields; drop malformed entries
+    valid_issues = []
+    for issue in review_data.get("issues", []):
+        if isinstance(issue, dict) and isinstance(issue.get("description"), str) and issue["description"].strip():
+            valid_issues.append({
+                "category": issue.get("category", "general") if isinstance(issue.get("category"), str) else "general",
+                "description": issue["description"],
+                "suggestion": issue.get("suggestion", "") if isinstance(issue.get("suggestion"), str) else "",
+                "severity": issue.get("severity", "medium") if issue.get("severity") in ("low", "medium", "high") else "medium",
+                "original_text": issue.get("original_text", "") if isinstance(issue.get("original_text"), str) else "",
+                "revised_text": issue.get("revised_text", "") if isinstance(issue.get("revised_text"), str) else "",
+            })
+    review_data["issues"] = valid_issues
+
+    # If review has no issues and no strengths, retry once with a stricter prompt
+    if len(review_data["issues"]) == 0 and len(review_data.get("strengths", [])) == 0:
+        print(f"[REVIEW] Empty review from reviewer {reviewer_level}, retrying with strict JSON prompt...")
+        retry_prompt = f"""{active_prompt_prefix}
+
+[Report to Review]
+{report_text[:3000]}
+
+You MUST respond with ONLY a JSON object. No other text.
+The JSON must have this exact structure:
+{{"issues":[{{"category":"clarity","description":"describe the issue","suggestion":"how to fix","severity":"medium","original_text":"exact text from report","revised_text":"improved version"}}],"strengths":["strength1","strength2"],"overall_score":5,"summary":"overall assessment"}}
+
+Provide at least 2 issues and 2 strengths. Start with {{ and end with }}."""
+
+        retry_response = generate_with_llm(retry_prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout)
+        if retry_response:
+            retry_cleaned = retry_response.strip()
+            if "```" in retry_cleaned:
+                retry_cleaned = re.sub(r"```(?:json)?\s*\n?", "", retry_cleaned).strip()
+            first_b = retry_cleaned.find('{')
+            if first_b > 0:
+                retry_cleaned = retry_cleaned[first_b:]
+            # Try repair if needed
+            repaired_retry = _try_repair_json(retry_cleaned)
+            retry_text = repaired_retry or retry_cleaned
+            try:
+                retry_data = _json.loads(retry_text)
+                if isinstance(retry_data.get("issues"), list) and len(retry_data["issues"]) > 0:
+                    print(f"[REVIEW] Retry succeeded for reviewer {reviewer_level}")
+                    review_data = retry_data
+                    # Re-validate
+                    if not isinstance(review_data.get("strengths"), list):
+                        review_data["strengths"] = []
+                    raw_score2 = review_data.get("overall_score")
+                    if not isinstance(raw_score2, (int, float)):
+                        if isinstance(raw_score2, str):
+                            m2 = re.search(r'(\d+(?:\.\d+)?)', raw_score2)
+                            review_data["overall_score"] = float(m2.group(1)) if m2 else 5
+                        else:
+                            review_data["overall_score"] = 5
+                    if not isinstance(review_data.get("summary"), str) or not review_data["summary"].strip():
+                        review_data["summary"] = "Review completed."
+                    valid_retry = []
+                    for issue in review_data.get("issues", []):
+                        if isinstance(issue, dict) and isinstance(issue.get("description"), str) and issue["description"].strip():
+                            valid_retry.append({
+                                "category": issue.get("category", "general") if isinstance(issue.get("category"), str) else "general",
+                                "description": issue["description"],
+                                "suggestion": issue.get("suggestion", "") if isinstance(issue.get("suggestion"), str) else "",
+                                "severity": issue.get("severity", "medium") if issue.get("severity") in ("low", "medium", "high") else "medium",
+                                "original_text": issue.get("original_text", "") if isinstance(issue.get("original_text"), str) else "",
+                                "revised_text": issue.get("revised_text", "") if isinstance(issue.get("revised_text"), str) else "",
+                            })
+                    review_data["issues"] = valid_retry
+            except (_json.JSONDecodeError, ValueError):
+                print(f"[REVIEW] Retry also failed for reviewer {reviewer_level}")
 
     return JSONResponse({
         "success": True,
