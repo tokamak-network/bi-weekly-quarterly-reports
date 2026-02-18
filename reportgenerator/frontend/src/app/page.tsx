@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { CalendarDays, Upload } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
 
@@ -248,7 +248,7 @@ function severityBadge(severity: string) {
 
 export default function Home() {
   /* ---- Step management ---- */
-  const [step, setStep] = useState<1 | 2>(1)
+  const [step, setStep] = useState<1 | 2 | 3>(1)
 
   /* ---- Step 1: Generate ---- */
   const [period, setPeriod] = useState('weekly')
@@ -292,6 +292,14 @@ export default function Home() {
   const [editingReport, setEditingReport] = useState(false)
   const [editableText, setEditableText] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
+  const [highlightedText, setHighlightedText] = useState<string | null>(null)
+  const [appliedIssues, setAppliedIssues] = useState<Set<string>>(new Set())
+  const [selectedReviewers, setSelectedReviewers] = useState<Set<number>>(new Set())
+  const [preScores, setPreScores] = useState<Record<number, number>>({})
+  const [postScores, setPostScores] = useState<Record<number, number>>({})
+  const [reReviewing, setReReviewing] = useState(false)
+  const [copiedMedium, setCopiedMedium] = useState(false)
+  const reportContentRef = useRef<HTMLDivElement>(null)
 
   /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
@@ -497,6 +505,7 @@ export default function Home() {
           const filtered = prev.filter((r) => r.reviewer_level !== level)
           return [...filtered, data as ReviewResult].sort((a, b) => a.reviewer_level - b.reviewer_level)
         })
+        setSelectedReviewers((prev) => { const next = new Set(Array.from(prev)); next.add(level); return next })
         setExpandedReview(level)
       } else {
         setReviewError(`Review failed: ${data.error || 'Unknown error'}`)
@@ -508,9 +517,59 @@ export default function Home() {
     }
   }
 
+  const handleApplyIssue = (issue: ReviewIssue) => {
+    if (!issue.original_text || !issue.revised_text) return
+    const issueKey = `${issue.original_text}::${issue.revised_text}`
+    const report = editingReport ? editableText : (fullReport ?? rawMarkdown)
+    const updated = report.replace(issue.original_text, issue.revised_text)
+    if (updated !== report) {
+      setFullReport(updated)
+      setRawMarkdown(updated)
+      if (editingReport) setEditableText(updated)
+      setAppliedIssues((prev) => { const next = new Set(Array.from(prev)); next.add(issueKey); return next })
+      setHighlightedText(null)
+    }
+  }
+
+  const handleHighlightIssue = (originalText: string | undefined) => {
+    if (!originalText) return
+    if (highlightedText === originalText) {
+      setHighlightedText(null)
+      return
+    }
+    setHighlightedText(originalText)
+    if (editingReport) {
+      setEditingReport(false)
+      setViewMode('original')
+    }
+    setTimeout(() => {
+      const el = reportContentRef.current?.querySelector('[data-highlight="active"]')
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 100)
+  }
+
+  const renderMarkdownWithHighlight = (md: string) => {
+    let html = renderMarkdown(md)
+    if (highlightedText) {
+      const escaped = highlightedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      html = html.replace(
+        new RegExp(`(${escaped})`, 'gi'),
+        '<mark data-highlight="active" class="bg-yellow-200 ring-2 ring-yellow-400 rounded px-0.5">$1</mark>'
+      )
+    }
+    return html
+  }
+
   const handleImprove = async () => {
-    if (reviews.length === 0) return
+    const activeReviews = reviews.filter((r) => selectedReviewers.has(r.reviewer_level))
+    if (activeReviews.length === 0) return
     setImproving(true)
+
+    // Save pre-improvement scores
+    const scores: Record<number, number> = {}
+    activeReviews.forEach((r) => { scores[r.reviewer_level] = r.review.overall_score })
+    setPreScores(scores)
+    setPostScores({})
 
     try {
       const reportText = editingReport ? editableText : (fullReport ?? rawMarkdown)
@@ -518,7 +577,7 @@ export default function Home() {
       formData.append('report_text', reportText)
       formData.append('report_type', reportType)
       formData.append('report_format', reportFormat)
-      formData.append('reviews_json', JSON.stringify(reviews))
+      formData.append('reviews_json', JSON.stringify(activeReviews))
       formData.append('model', selectedModel)
 
       const response = await fetch('http://localhost:8000/api/improve', { method: 'POST', body: formData })
@@ -534,6 +593,47 @@ export default function Home() {
     } finally {
       setImproving(false)
     }
+  }
+
+  const handleReReviewImproved = async () => {
+    if (!improvedReport) return
+    setReReviewing(true)
+    const newPostScores: Record<number, number> = {}
+
+    try {
+      for (const level of Object.keys(preScores).map(Number)) {
+        const formData = new FormData()
+        formData.append('report_text', improvedReport)
+        formData.append('report_type', reportType)
+        formData.append('report_format', reportFormat)
+        formData.append('reviewer_level', level.toString())
+        formData.append('model', selectedModel)
+
+        const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
+        if (!response.ok) continue
+        const data = await response.json()
+        if (data.success) {
+          newPostScores[level] = data.review.overall_score
+        }
+      }
+      setPostScores(newPostScores)
+    } catch (error) {
+      console.error('Re-review failed:', error)
+    } finally {
+      setReReviewing(false)
+    }
+  }
+
+  const convertToMediumFormat = (md: string): string => {
+    return md
+      .replace(/^### (.+)$/gm, '# $1')
+      .replace(/^#### (.+)$/gm, '## $1')
+      .replace(/^\* \*\*([^*]+)\*\*:\s*/gm, '**$1** — ')
+      .replace(/^\* \*\*([^*]+)\*\*/gm, '**$1**')
+      .replace(/^\* /gm, '- ')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
   }
 
   /* ================================================================ */
@@ -557,6 +657,10 @@ export default function Home() {
               <span className="h-px w-6 bg-gray-300" />
               <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
                 2. Review &amp; Improve
+              </span>
+              <span className="h-px w-6 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+                3. Publish
               </span>
             </div>
           </div>
@@ -899,6 +1003,182 @@ export default function Home() {
   }
 
   /* ================================================================ */
+  /* STEP 3 — Publish (Medium Format)                                   */
+  /* ================================================================ */
+
+  if (step === 3) {
+    const finalReport = improvedReport ?? fullReport ?? rawMarkdown
+    const mediumContent = convertToMediumFormat(finalReport)
+
+    return (
+      <div className="min-h-screen bg-white text-gray-900">
+        <main className="mx-auto w-full max-w-5xl px-6 pb-16 pt-8">
+          {/* Header */}
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <button
+                onClick={() => setStep(2)}
+                className="mb-2 flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition"
+              >
+                ← Back to Review
+              </button>
+              <h1 className="text-2xl font-semibold text-gray-900">Publish to Medium</h1>
+              <p className="mt-1 text-xs text-gray-500">
+                Final report formatted for Medium. Copy and paste directly into your Medium editor.
+              </p>
+            </div>
+            {/* Step indicator */}
+            <div className="flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+                1. Generate
+              </span>
+              <span className="h-px w-6 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+                2. Review
+              </span>
+              <span className="h-px w-6 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
+                3. Publish
+              </span>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+            {/* Left: Medium preview */}
+            <div className="space-y-4">
+              {/* Medium-formatted preview */}
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div className="border-b border-gray-100 px-6 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-semibold text-emerald-700 uppercase">
+                      Medium Ready
+                    </span>
+                    <span className="text-[11px] text-gray-400">
+                      {mediumContent.split('\n').length} lines
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleCopy(mediumContent, setCopiedMedium)}
+                      className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+                    >
+                      {copiedMedium ? 'Copied!' : 'Copy for Medium'}
+                    </button>
+                    <button
+                      onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.txt`)}
+                      className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 transition"
+                    >
+                      Download .txt
+                    </button>
+                  </div>
+                </div>
+                <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-8">
+                  <div className="prose max-w-none text-base leading-8 text-gray-800 whitespace-pre-wrap font-serif">
+                    {mediumContent}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Publishing checklist & info */}
+            <div className="space-y-4">
+              {/* Format info */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900">Publishing Guide</h3>
+                <div className="mt-3 space-y-3 text-[11px] text-gray-600">
+                  <div className="rounded-lg bg-blue-50 p-3">
+                    <div className="font-semibold text-blue-700 mb-1">How to paste into Medium</div>
+                    <ol className="space-y-1 list-decimal list-inside">
+                      <li>Click &quot;Copy for Medium&quot; above</li>
+                      <li>Open Medium &rarr; New Story</li>
+                      <li>Paste directly into the editor</li>
+                      <li>Medium will auto-format headers &amp; lists</li>
+                    </ol>
+                  </div>
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <div className="font-semibold text-gray-700 mb-1">Format Adjustments</div>
+                    <ul className="space-y-1">
+                      <li>&#x2022; Headers converted to # / ## for Medium</li>
+                      <li>&#x2022; Bullet points use - (dash) format</li>
+                      <li>&#x2022; Bold titles preserved with ** syntax</li>
+                      <li>&#x2022; Links shown as text (URL) format</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Report summary */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900">Report Summary</h3>
+                <div className="mt-3 space-y-2 text-[11px]">
+                  {stats && (
+                    <div className="rounded-lg bg-gray-50 p-3 space-y-1">
+                      <div className="flex justify-between text-gray-600">
+                        <span>Commits</span><span className="font-semibold">{stats.commits}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-600">
+                        <span>Repositories</span><span className="font-semibold">{stats.repos}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-600">
+                        <span>PRs</span><span className="font-semibold">{stats.prs}</span>
+                      </div>
+                      {dateRange?.start && dateRange?.end && (
+                        <div className="flex justify-between text-gray-600">
+                          <span>Period</span><span className="font-semibold">{dateRange.start} ~ {dateRange.end}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {Object.keys(postScores).length > 0 && (
+                    <div className="rounded-lg bg-emerald-50 p-3">
+                      <div className="flex justify-between text-emerald-700">
+                        <span>Final review score</span>
+                        <span className="font-bold">
+                          {(Object.values(postScores).reduce((s, v) => s + v, 0) / Object.values(postScores).length).toFixed(1)}/10
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="rounded-lg bg-gray-50 p-3">
+                    <div className="flex justify-between text-gray-600">
+                      <span>Report type</span><span className="font-semibold capitalize">{reportType}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600 mt-1">
+                      <span>Format</span><span className="font-semibold capitalize">{reportFormat}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600 mt-1">
+                      <span>Source</span><span className="font-semibold">{improvedReport ? 'Improved' : 'Original'}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Download options */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900">Download Options</h3>
+                <div className="mt-3 space-y-2">
+                  <button
+                    onClick={() => handleDownload(finalReport, `report-final-${dateRange?.start ?? 'draft'}.md`)}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition text-left"
+                  >
+                    Download Markdown (.md)
+                  </button>
+                  <button
+                    onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.txt`)}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition text-left"
+                  >
+                    Download Medium format (.txt)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  /* ================================================================ */
   /* STEP 2 — Review & Improve                                         */
   /* ================================================================ */
 
@@ -925,6 +1205,10 @@ export default function Home() {
             <span className="h-px w-6 bg-gray-300" />
             <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
               2. Review &amp; Improve
+            </span>
+            <span className="h-px w-6 bg-gray-300" />
+            <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+              3. Publish
             </span>
           </div>
         </div>
@@ -1006,7 +1290,7 @@ export default function Home() {
 
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <div className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
+              <div ref={reportContentRef} className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
                 {editingReport ? (
                   <textarea
                     value={editableText}
@@ -1036,7 +1320,7 @@ export default function Home() {
                 ) : (
                   <div
                     className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(currentReport) }}
+                    dangerouslySetInnerHTML={{ __html: renderMarkdownWithHighlight(currentReport) }}
                   />
                 )}
               </div>
@@ -1159,26 +1443,53 @@ export default function Home() {
                                     Feedback ({result.review.issues.length})
                                   </div>
                                   <div className="space-y-2">
-                                    {result.review.issues.map((issue, i) => (
-                                      <div key={i} className="rounded-lg border border-gray-100 p-2.5">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
-                                            {issue.severity}
-                                          </span>
-                                          <span className="text-[10px] text-gray-400">{issue.category}</span>
-                                        </div>
-                                        <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
-                                        {issue.suggestion && (
-                                          <p className="mt-1 text-[11px] text-blue-600 leading-4">Suggestion: {issue.suggestion}</p>
-                                        )}
-                                        {issue.original_text && issue.revised_text && (
-                                          <div className="mt-2 space-y-1">
-                                            <div className="rounded bg-red-50 px-2 py-1 text-[10px] text-red-700 line-through">{issue.original_text}</div>
-                                            <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
+                                    {result.review.issues.map((issue, i) => {
+                                      const issueKey = `${issue.original_text}::${issue.revised_text}`
+                                      const isApplied = appliedIssues.has(issueKey)
+                                      const isHighlighted = highlightedText === issue.original_text
+
+                                      return (
+                                        <div
+                                          key={i}
+                                          className={`rounded-lg border p-2.5 cursor-pointer transition ${
+                                            isHighlighted
+                                              ? 'border-yellow-400 bg-yellow-50 ring-1 ring-yellow-300'
+                                              : isApplied
+                                              ? 'border-emerald-200 bg-emerald-50/50'
+                                              : 'border-gray-100 hover:border-gray-200'
+                                          }`}
+                                          onClick={() => handleHighlightIssue(issue.original_text)}
+                                        >
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
+                                              {issue.severity}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400">{issue.category}</span>
+                                            {isApplied && (
+                                              <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">Applied</span>
+                                            )}
                                           </div>
-                                        )}
-                                      </div>
-                                    ))}
+                                          <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
+                                          {issue.suggestion && (
+                                            <p className="mt-1 text-[11px] text-blue-600 leading-4">Suggestion: {issue.suggestion}</p>
+                                          )}
+                                          {issue.original_text && issue.revised_text && (
+                                            <div className="mt-2 space-y-1">
+                                              <div className="rounded bg-red-50 px-2 py-1 text-[10px] text-red-700 line-through">{issue.original_text}</div>
+                                              <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
+                                              {!isApplied && (
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue) }}
+                                                  className="mt-1 rounded bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-blue-700 transition"
+                                                >
+                                                  Apply this change
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
                                   </div>
                                 </div>
                               )}
@@ -1222,32 +1533,71 @@ export default function Home() {
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-900">AI Improvement</h3>
               <p className="mt-1 text-[11px] text-gray-500">
-                Use reviewer feedback to generate an improved version of the report.
+                Select which reviewers&apos; feedback to apply, then improve the report.
               </p>
 
               {reviews.length > 0 && (
                 <div className="mt-3 rounded-lg bg-gray-50 p-3">
-                  <div className="flex items-center justify-between text-xs text-gray-600">
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
                     <span>{reviews.length} review{reviews.length > 1 ? 's' : ''} collected</span>
                     <span className="font-medium">
                       Avg score: {(reviews.reduce((sum, r) => sum + r.review.overall_score, 0) / reviews.length).toFixed(1)}/10
                     </span>
                   </div>
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {reviews.map((r) => (
-                      <span key={r.reviewer_level} className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                        REVIEWERS.find((rv) => rv.level === r.reviewer_level)?.badge ?? 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {r.reviewer_ko} {r.review.overall_score}/10
-                      </span>
-                    ))}
+                  <div className="space-y-1.5">
+                    {reviews.map((r) => {
+                      const rv = REVIEWERS.find((rv) => rv.level === r.reviewer_level)
+                      const isSelected = selectedReviewers.has(r.reviewer_level)
+                      return (
+                        <label
+                          key={r.reviewer_level}
+                          className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer transition ${
+                            isSelected ? 'bg-white border border-gray-200' : 'hover:bg-white/50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedReviewers((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(r.reviewer_level)) next.delete(r.reviewer_level)
+                                else next.add(r.reviewer_level)
+                                return next
+                              })
+                            }}
+                            className="h-3.5 w-3.5 rounded border-gray-300 text-blue-600"
+                          />
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${rv?.badge ?? 'bg-gray-100 text-gray-600'}`}>
+                            {r.reviewer_ko}
+                          </span>
+                          <span className={`ml-auto text-xs font-bold ${scoreColor(r.review.overall_score)}`}>
+                            {r.review.overall_score}/10
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => setSelectedReviewers(new Set(reviews.map((r) => r.reviewer_level)))}
+                      className="text-[10px] text-blue-600 hover:text-blue-700"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      onClick={() => setSelectedReviewers(new Set())}
+                      className="text-[10px] text-gray-400 hover:text-gray-600"
+                    >
+                      Clear
+                    </button>
                   </div>
                 </div>
               )}
 
               <button
                 onClick={handleImprove}
-                disabled={reviews.length === 0 || improving}
+                disabled={selectedReviewers.size === 0 || improving}
                 className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {improving ? (
@@ -1255,22 +1605,90 @@ export default function Home() {
                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                     Improving...
                   </span>
-                ) : reviews.length === 0 ? (
-                  'Run at least 1 review first'
+                ) : selectedReviewers.size === 0 ? (
+                  'Select reviewers to apply'
                 ) : (
-                  'Improve Report with AI'
+                  `Improve with ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
                 )}
               </button>
 
               {improvedReport && (
-                <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-200 text-[10px]">&#10003;</span>
-                    Improved report generated
+                <div className="mt-3 space-y-3">
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-200 text-[10px]">&#10003;</span>
+                      Improved report generated
+                    </div>
+                    <p className="mt-1 text-[11px] text-emerald-600">
+                      Switch to &quot;Improved&quot; or &quot;Changes&quot; tab to view the result.
+                    </p>
                   </div>
-                  <p className="mt-1 text-[11px] text-emerald-600">
-                    Switch to &quot;Improved&quot; tab above to view the result.
-                  </p>
+
+                  {/* Score comparison */}
+                  <div className="rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[10px] font-semibold uppercase text-gray-500">Score Comparison</div>
+                      <button
+                        onClick={handleReReviewImproved}
+                        disabled={reReviewing}
+                        className="rounded bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:bg-violet-200 transition disabled:opacity-50"
+                      >
+                        {reReviewing ? 'Re-reviewing...' : Object.keys(postScores).length > 0 ? 'Re-review again' : 'Re-review improved'}
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {Object.entries(preScores).map(([lvl, before]) => {
+                        const level = Number(lvl)
+                        const after = postScores[level]
+                        const rv = REVIEWERS.find((r) => r.level === level)
+                        const delta = after !== undefined ? after - before : null
+                        return (
+                          <div key={level} className="flex items-center justify-between text-[11px]">
+                            <span className="text-gray-600">{rv?.name_ko ?? `Lv.${level}`}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-medium ${scoreColor(before)}`}>{before}/10</span>
+                              {after !== undefined && (
+                                <>
+                                  <span className="text-gray-400">→</span>
+                                  <span className={`font-bold ${scoreColor(after)}`}>{after}/10</span>
+                                  {delta !== null && delta !== 0 && (
+                                    <span className={`text-[10px] font-semibold ${delta > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                      {delta > 0 ? '+' : ''}{delta.toFixed(1)}
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {after === undefined && reReviewing && (
+                                <span className="inline-block h-3 w-3 animate-spin rounded-full border border-gray-300 border-t-gray-600" />
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {Object.keys(postScores).length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between text-xs">
+                        <span className="font-medium text-gray-600">Average</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-500">
+                            {(Object.values(preScores).reduce((s, v) => s + v, 0) / Object.values(preScores).length).toFixed(1)}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-bold text-gray-800">
+                            {(Object.values(postScores).reduce((s, v) => s + v, 0) / Object.values(postScores).length).toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Proceed to Publish */}
+                  <button
+                    onClick={() => setStep(3)}
+                    className="w-full rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800"
+                  >
+                    Proceed to Publish →
+                  </button>
                 </div>
               )}
             </div>
