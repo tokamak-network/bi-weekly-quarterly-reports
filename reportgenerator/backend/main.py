@@ -1841,12 +1841,13 @@ def generate_public_section(
     summary: dict,
     use_ai: bool = True,
     model: Optional[str] = None,
+    report_format: str = "concise",
 ) -> str:
     """Generate public report section."""
     info = SECTION_INFO_PUBLIC[project]
 
     if use_ai and has_tokamak_client(model):
-        section = generate_with_ai_public(project, summary, info, model=model)
+        section = generate_with_ai_public(project, summary, info, model=model, report_format=report_format)
     else:
         section = generate_basic_public(project, summary, info)
 
@@ -1883,6 +1884,7 @@ def generate_repo_public_section(
     summary: dict,
     use_ai: bool = True,
     model: Optional[str] = None,
+    report_format: str = "concise",
 ) -> str:
     if repo_name == "Other repos":
         remaining = len(summary.get("repos", []))
@@ -1899,9 +1901,9 @@ def generate_repo_public_section(
         "overview_url": f"https://github.com/tokamak-network/{repo_name}",
         "business_focus": summary.get("business_focus", "Ecosystem development"),
     }
-    print(f"[REPO PUBLIC] repo={repo_name}, use_ai={use_ai}, model={model}, has_client={has_tokamak_client(model)}")
+    print(f"[REPO PUBLIC] repo={repo_name}, use_ai={use_ai}, model={model}, format={report_format}, has_client={has_tokamak_client(model)}")
     if use_ai and has_tokamak_client(model):
-        section = generate_with_ai_public(repo_name, summary, info, model=model)
+        section = generate_with_ai_public(repo_name, summary, info, model=model, report_format=report_format)
     else:
         section = generate_basic_public(repo_name, summary, info)
     if section:
@@ -1963,7 +1965,32 @@ Merged PRs:
     return f"{bullets}\n"
 
 
-def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
+def _format_instructions_concise() -> str:
+    """Format A (Concise): One-liner intro + bold-titled bullet points."""
+    return """[Output Format: Concise (Format A)]
+1. Start with exactly ONE sentence explaining what this project/repository does and why it matters to users.
+2. Then list exactly 5 bullet points of key accomplishments from this period.
+3. Each bullet MUST follow this pattern:
+   * **Bold Action Phrase**: Followed by a plain-language explanation of the user-facing benefit.
+   - Example: "* **Integrated Fast Withdrawal Capabilities**: Merged new withdrawal logic, significantly reducing the waiting time for users looking to unstake their assets."
+4. Do NOT include any section headers like "Key Accomplishments" or project title headers.
+5. Do NOT include a closing/summary paragraph."""
+
+
+def _format_instructions_structured() -> str:
+    """Format B (Structured): Title + intro paragraph + Key Accomplishments header + bullets."""
+    return """[Output Format: Structured (Format B)]
+1. Start with a title line: "[Project/Repository Name] Progress Update" or "[Project/Repository Name]: [Subtitle describing theme]"
+2. Then write a 2-3 sentence overview paragraph explaining what this project does, why it matters, and what the focus of this period was.
+3. Then add a "Key Accomplishments" or "Key Accomplishments:" header on its own line.
+4. Then list exactly 5 bullet points of key accomplishments from this period.
+5. Each bullet MUST follow this pattern:
+   * **Bold Action Phrase**: Followed by a plain-language explanation of the user-facing benefit.
+   - Example: "* **Integrated Fast Withdrawal Capabilities**: Merged new withdrawal logic, significantly reducing the waiting time for users looking to unstake their assets."
+6. Do NOT include a closing/summary paragraph."""
+
+
+def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None, report_format: str = "concise") -> str:
     """Generate public section using Tokamak API."""
     if not has_tokamak_client(model):
         return generate_basic_public(project, summary, info)
@@ -1990,6 +2017,8 @@ def generate_with_ai_public(project: str, summary: dict, info: dict, model: Opti
                 repo_desc_lines.append(f"- {repo}: {desc}")
     repo_descriptions = "\n".join(repo_desc_lines) if repo_desc_lines else "N/A"
 
+    format_instructions = _format_instructions_structured() if report_format == "structured" else _format_instructions_concise()
+
     prompt = f"""[Role]
 You are writing a public progress update for Tokamak Network, targeting investors, community members, and general readers who want to understand what was accomplished and why it matters.
 
@@ -2000,17 +2029,17 @@ Business Focus: {info.get('business_focus', 'Ecosystem development')}
 [Repository Descriptions]
 {repo_descriptions}
 
-[Instructions]
-1. Start with a 1-2 sentence overview explaining WHAT this project/repository does and WHY it matters to users.
-2. Then list 3-5 bullet points of key accomplishments from this period.
-3. Each bullet should:
-   - Start with a strong action verb (Launched, Enhanced, Strengthened, Delivered, etc.)
+{format_instructions}
+
+[Writing Rules]
+1. Each bullet should:
+   - Start with a strong action verb (Launched, Enhanced, Strengthened, Delivered, Integrated, Implemented, etc.)
    - Explain the user-facing benefit, not just the technical change
    - Translate technical jargon into plain language
    - Example: Instead of "refactored staking contract logic", write "Improved staking reliability so users experience fewer transaction failures"
-4. Do NOT include: commit hashes, file paths, PR numbers, section headers, meta commentary, or internal project codenames (Ooo, Eco, TRH).
-5. Output in English only.
-6. {model_style_hint(model, "public")}
+2. Do NOT include: commit hashes, file paths, PR numbers, meta commentary, or internal project codenames (Ooo, Eco, TRH).
+3. Output in English only.
+4. {model_style_hint(model, "public")}
 
 [Activity Data]
 Date Range: {summary.get('start_date', 'N/A')} to {summary.get('end_date', 'N/A')}
@@ -2024,7 +2053,7 @@ Merged PRs:
 {pr_list}
 """
 
-    print(f"[AI PUBLIC] Calling model={model} for project={project}")
+    print(f"[AI PUBLIC] Calling model={model} for project={project} format={report_format}")
     bullets = generate_with_llm(prompt, max_tokens=1000, model=model)
     if not bullets:
         print(f"[AI PUBLIC] LLM returned None for project={project}, falling back to basic")
@@ -2361,6 +2390,7 @@ async def generate_report(
     include_individuals: bool = Form(True),
     report_grouping: str = Form("project"),
     repo_limit: int = Form(0),
+    report_format: str = Form("concise"),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -2512,7 +2542,7 @@ async def generate_report(
                 if report_type == "technical":
                     content = generate_repo_technical_section(rn, sm, section_use_ai, model=selected_model)
                 else:
-                    content = generate_repo_public_section(rn, sm, section_use_ai, model=selected_model)
+                    content = generate_repo_public_section(rn, sm, section_use_ai, model=selected_model, report_format=report_format)
                 return {"project": rn, "title": rn, "content": content}
 
             with ThreadPoolExecutor(max_workers=min(5, len(entries))) as executor:
@@ -2523,7 +2553,7 @@ async def generate_report(
                     if report_type == "technical":
                         section = generate_technical_section(project, summaries[project], section_use_ai, model=selected_model)
                     else:
-                        section = generate_public_section(project, summaries[project], section_use_ai, model=selected_model)
+                        section = generate_public_section(project, summaries[project], section_use_ai, model=selected_model, report_format=report_format)
                     sections.append({
                         "project": project,
                         "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
@@ -2588,7 +2618,7 @@ async def generate_report(
                                 candidate_use_ai = False
                             section = generate_repo_technical_section(repo_name, summary, candidate_use_ai, model=candidate)
                         else:
-                            section = generate_repo_public_section(repo_name, summary, True, model=candidate)
+                            section = generate_repo_public_section(repo_name, summary, True, model=candidate, report_format=report_format)
                         candidate_sections.append({
                             "project": repo_name,
                             "title": repo_name,
@@ -2600,7 +2630,7 @@ async def generate_report(
                             if report_type == "technical":
                                 section = generate_technical_section(project, summaries[project], use_ai, model=candidate)
                             else:
-                                section = generate_public_section(project, summaries[project], use_ai, model=candidate)
+                                section = generate_public_section(project, summaries[project], use_ai, model=candidate, report_format=report_format)
                             candidate_sections.append({
                                 "project": project,
                                 "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
@@ -2657,6 +2687,7 @@ async def generate_report(
         return JSONResponse({
             "success": True,
             "report_type": report_type,
+            "report_format": report_format,
             "report_scope": scope,
             "report_grouping": report_grouping,
             "model": selected_model,
@@ -2720,6 +2751,7 @@ async def review_report(
     report_type: str = Form("public"),
     reviewer_level: int = Form(3),
     model: Optional[str] = Form(None),
+    report_format: str = Form("concise"),
 ):
     """Review a generated report using a virtual reviewer persona."""
     import json as _json
@@ -2742,11 +2774,32 @@ async def review_report(
         else "Technical development report"
     )
 
+    format_context = ""
+    if report_type == "public":
+        if report_format == "structured":
+            format_context = (
+                "\n[Report Format]\n"
+                "This report uses Format B (Structured): Each section should have a title, "
+                "an introductory paragraph explaining the project, a 'Key Accomplishments' header, "
+                "and 5 bullet points with **bold action phrases** followed by explanations.\n"
+                "When reviewing, also evaluate whether the structure is consistent across sections "
+                "(e.g., all sections have titles, intro paragraphs, and the Key Accomplishments header).\n"
+            )
+        else:
+            format_context = (
+                "\n[Report Format]\n"
+                "This report uses Format A (Concise): Each section should have a one-sentence project overview "
+                "followed by 5 bullet points with **bold action phrases** followed by explanations. "
+                "No section headers like 'Key Accomplishments' or project title headers.\n"
+                "When reviewing, also evaluate whether the format is compact and scannable, "
+                "and whether the one-liner intros are informative enough without being too verbose.\n"
+            )
+
     prompt = f"""{persona["prompt_prefix"]}
 
 [Report Type]
 {report_type_label}
-
+{format_context}
 [Report to Review]
 {report_text}
 
@@ -2815,6 +2868,7 @@ async def improve_report(
     report_type: str = Form("public"),
     reviews_json: str = Form("[]"),
     model: Optional[str] = Form(None),
+    report_format: str = Form("concise"),
 ):
     """Improve a report based on reviewer feedback."""
     import json as _json
@@ -2861,6 +2915,21 @@ async def improve_report(
             "Include specific technical details, architecture decisions, and implementation specifics."
         )
 
+    format_instruction = ""
+    if report_type == "public":
+        if report_format == "structured":
+            format_instruction = (
+                "8. Preserve Format B (Structured) across all sections: each section must have "
+                "a title, introductory paragraph, 'Key Accomplishments' header, and 5 bullet points "
+                "with **bold action phrases**. Ensure all sections follow this structure consistently."
+            )
+        else:
+            format_instruction = (
+                "8. Preserve Format A (Concise) across all sections: each section must have "
+                "a one-sentence project overview followed by 5 bullet points with **bold action phrases**. "
+                "No extra headers or title lines. Keep it compact and scannable."
+            )
+
     prompt = f"""[Role]
 You are a senior technical writer at a blockchain company. Your task is to improve a report based on reviewer feedback.
 
@@ -2872,6 +2941,7 @@ You are a senior technical writer at a blockchain company. Your task is to impro
 5. Keep the same overall structure (headers, sections).
 6. Improve clarity, flow, and readability.
 7. Output ONLY the improved report in markdown. No meta-commentary.
+{format_instruction}
 
 [Original Report]
 {report_text}
