@@ -2997,11 +2997,13 @@ IMPORTANT:
                 pass
 
     if review_data is None:
+        print(f"[REVIEW] WARNING: Failed to parse JSON from reviewer {reviewer_level}. Raw response length: {len(cleaned)}")
+        print(f"[REVIEW] Raw response preview: {cleaned[:500]}")
         review_data = {
             "issues": [],
             "strengths": [],
             "overall_score": 5,
-            "summary": cleaned[:2000] if len(cleaned) > 2000 else cleaned,
+            "summary": f"Review could not be parsed into structured feedback. Raw response: {cleaned[:1500]}" if cleaned else "Review completed but no structured feedback was generated.",
         }
 
     # Ensure required fields exist with correct types

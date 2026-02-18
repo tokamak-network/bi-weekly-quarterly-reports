@@ -529,7 +529,10 @@ export default function Home() {
           const filtered = prev.filter((r) => r.reviewer_level !== level)
           return [...filtered, data as ReviewResult].sort((a, b) => a.reviewer_level - b.reviewer_level)
         })
-        setSelectedReviewers((prev) => { const next = new Set(Array.from(prev)); next.add(level); return next })
+        // Only auto-select reviewer if the review has actionable feedback (issues)
+        if (data.review?.issues?.length > 0) {
+          setSelectedReviewers((prev) => { const next = new Set(Array.from(prev)); next.add(level); return next })
+        }
         setExpandedReview(level)
       } else {
         setReviewError(`Review failed: ${data.error || 'Unknown error'}`)
@@ -1447,6 +1450,23 @@ export default function Home() {
                               {/* Summary */}
                               <p className="text-xs text-gray-600 leading-5">{result.review.summary}</p>
 
+                              {/* Warning when no structured feedback was generated */}
+                              {(!result.review.issues || result.review.issues.length === 0) &&
+                               (!result.review.strengths || result.review.strengths.length === 0) && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                  <p className="text-[11px] text-amber-700 font-medium">
+                                    구조화된 피드백이 생성되지 않았습니다. AI 응답 파싱에 실패했을 수 있습니다.
+                                  </p>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleReview(reviewer.level) }}
+                                    disabled={isReviewing}
+                                    className="mt-2 rounded-lg bg-amber-100 px-3 py-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200 transition disabled:opacity-50"
+                                  >
+                                    {isReviewing ? 'Reviewing...' : 'Retry Review'}
+                                  </button>
+                                </div>
+                              )}
+
                               {/* Strengths */}
                               {result.review.strengths && result.review.strengths.length > 0 && (
                                 <div>
@@ -1623,7 +1643,11 @@ export default function Home() {
 
               <button
                 onClick={handleImprove}
-                disabled={selectedReviewers.size === 0 || improving}
+                disabled={
+                  selectedReviewers.size === 0 ||
+                  improving ||
+                  !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0)
+                }
                 className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {improving ? (
@@ -1633,6 +1657,8 @@ export default function Home() {
                   </span>
                 ) : selectedReviewers.size === 0 ? (
                   'Select reviewers to apply'
+                ) : !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0) ? (
+                  'No actionable feedback to apply'
                 ) : (
                   `Improve with ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
                 )}
