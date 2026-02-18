@@ -103,7 +103,6 @@ const MODEL_OPTIONS = [
   'gemini-3-pro',
   'gemini-3-flash',
   'deepseek-v3',
-  'qwen3-235b-thinking',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
