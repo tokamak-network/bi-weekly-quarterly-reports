@@ -2900,9 +2900,12 @@ Provide your review as JSON. For each issue, include the EXACT original text and
 }}
 
 IMPORTANT:
-- For each issue, you MUST include original_text (copied from the report) and revised_text (your improved version).
+- For each issue, you MUST include original_text (copied EXACTLY from the report) and revised_text (your improved version).
 - Be specific and constructive. Show exactly what to change, not just what's wrong.
-- Output ONLY the JSON. No additional text or markdown fences."""
+- You MUST provide at least 3 issues and at least 2 strengths.
+- The overall_score MUST be an integer between 1 and 10.
+- Output ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include any text before or after the JSON.
+- Start your response with the opening brace {{ and end with the closing brace }}."""
 
     review_timeout = max(get_model_timeout(selected_model) * 2, 120)
     # Use higher token budget for reviews with original_text/revised_text fields
@@ -2925,6 +2928,10 @@ IMPORTANT:
     if "```" in cleaned:
         cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned)
         cleaned = cleaned.strip()
+    # Strip any leading text before the first { (e.g., "Here is my review:")
+    first_brace = cleaned.find('{')
+    if first_brace > 0:
+        cleaned = cleaned[first_brace:]
 
     # Attempt to repair truncated JSON (common with token limits)
     def _try_repair_json(s: str) -> Optional[str]:

@@ -32,6 +32,14 @@ interface ReviewResult {
   review: ReviewData
 }
 
+interface AppliedChange {
+  issueKey: string
+  reviewerKo: string
+  category: string
+  originalText: string
+  revisedText: string
+}
+
 interface DiffSegment {
   type: 'unchanged' | 'added' | 'removed'
   text: string
@@ -295,6 +303,7 @@ export default function Home() {
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [highlightedText, setHighlightedText] = useState<string | null>(null)
   const [appliedIssues, setAppliedIssues] = useState<Set<string>>(new Set())
+  const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
   const [selectedReviewers, setSelectedReviewers] = useState<Set<number>>(new Set())
   const [preScores, setPreScores] = useState<Record<number, number>>({})
   const [postScores, setPostScores] = useState<Record<number, number>>({})
@@ -548,16 +557,48 @@ export default function Home() {
     }
   }
 
-  const handleApplyIssue = (issue: ReviewIssue) => {
+  const handleApplyIssue = (issue: ReviewIssue, reviewerKo?: string) => {
     if (!issue.original_text || !issue.revised_text) return
     const issueKey = `${issue.original_text}::${issue.revised_text}`
     const report = editingReport ? editableText : (fullReport ?? rawMarkdown)
-    const updated = report.replace(issue.original_text, issue.revised_text)
+
+    // Try exact match first
+    let updated = report.replace(issue.original_text, issue.revised_text)
+
+    // If exact match failed, try flexible whitespace matching
+    if (updated === report) {
+      try {
+        const escaped = issue.original_text
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\s+/g, '\\s+')
+        const regex = new RegExp(escaped)
+        updated = report.replace(regex, issue.revised_text)
+      } catch { /* regex construction failed */ }
+    }
+
+    // If still failed, try case-insensitive match
+    if (updated === report) {
+      try {
+        const escaped = issue.original_text
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\s+/g, '\\s+')
+        const regex = new RegExp(escaped, 'i')
+        updated = report.replace(regex, issue.revised_text)
+      } catch { /* regex construction failed */ }
+    }
+
     if (updated !== report) {
       setFullReport(updated)
       setRawMarkdown(updated)
       if (editingReport) setEditableText(updated)
       setAppliedIssues((prev) => { const next = new Set(Array.from(prev)); next.add(issueKey); return next })
+      setAppliedChanges((prev) => [...prev, {
+        issueKey,
+        reviewerKo: reviewerKo ?? 'Reviewer',
+        category: issue.category,
+        originalText: issue.original_text!,
+        revisedText: issue.revised_text!,
+      }])
       setHighlightedText(null)
     }
   }
@@ -592,7 +633,20 @@ export default function Home() {
   }
 
   const handleImprove = async () => {
-    const activeReviews = reviews.filter((r) => selectedReviewers.has(r.reviewer_level))
+    // Filter selected reviews and exclude already-applied issues
+    const activeReviews = reviews
+      .filter((r) => selectedReviewers.has(r.reviewer_level))
+      .map((r) => ({
+        ...r,
+        review: {
+          ...r.review,
+          issues: r.review.issues.filter((issue) => {
+            if (!issue.original_text || !issue.revised_text) return true
+            const issueKey = `${issue.original_text}::${issue.revised_text}`
+            return !appliedIssues.has(issueKey)
+          })
+        }
+      }))
     if (activeReviews.length === 0) return
     setImproving(true)
     setImproveError(null)
@@ -1317,6 +1371,40 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Applied changes log */}
+            {appliedChanges.length > 0 && viewMode === 'original' && !editingReport && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase text-blue-600">
+                    Applied Changes ({appliedChanges.length})
+                  </div>
+                  <button
+                    onClick={() => { setAppliedChanges([]); setAppliedIssues(new Set()) }}
+                    className="text-[10px] text-gray-400 hover:text-gray-600"
+                  >
+                    Clear log
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {appliedChanges.map((c, i) => (
+                    <div key={i} className="rounded-lg bg-white border border-blue-100 p-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700">
+                          {c.reviewerKo}
+                        </span>
+                        <span className="text-[9px] text-gray-400">{c.category}</span>
+                      </div>
+                      <div className="text-[10px] leading-4">
+                        <span className="text-red-500 line-through">{c.originalText.length > 80 ? c.originalText.slice(0, 80) + '...' : c.originalText}</span>
+                        <span className="mx-1 text-gray-300">&rarr;</span>
+                        <span className="text-emerald-600">{c.revisedText.length > 80 ? c.revisedText.slice(0, 80) + '...' : c.revisedText}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div ref={reportContentRef} className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
@@ -1525,7 +1613,7 @@ export default function Home() {
                                               <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
                                               {!isApplied && (
                                                 <button
-                                                  onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue) }}
+                                                  onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue, result.reviewer_ko) }}
                                                   className="mt-1 rounded bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-blue-700 transition"
                                                 >
                                                   Apply this change
