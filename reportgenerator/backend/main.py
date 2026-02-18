@@ -2905,8 +2905,10 @@ IMPORTANT:
 - Output ONLY the JSON. No additional text or markdown fences."""
 
     review_timeout = max(get_model_timeout(selected_model) * 2, 120)
+    # Use higher token budget for reviews with original_text/revised_text fields
+    review_max_tokens = 4500
     llm_errors: List[str] = []
-    response = generate_with_llm(prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
+    response = generate_with_llm(prompt, max_tokens=review_max_tokens, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
     if not response:
         error_detail = "; ".join(llm_errors) if llm_errors else "All AI providers failed"
@@ -2924,12 +2926,45 @@ IMPORTANT:
         cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned)
         cleaned = cleaned.strip()
 
+    # Attempt to repair truncated JSON (common with token limits)
+    def _try_repair_json(s: str) -> Optional[str]:
+        """Try to close truncated JSON by adding missing brackets."""
+        if not s.strip():
+            return None
+        # Count open braces/brackets
+        open_braces = s.count('{') - s.count('}')
+        open_brackets = s.count('[') - s.count(']')
+        if open_braces <= 0 and open_brackets <= 0:
+            return None  # Not truncated
+        # Remove trailing incomplete string/value
+        repaired = s.rstrip()
+        # Remove trailing partial string (ends mid-string without closing quote)
+        if repaired.count('"') % 2 == 1:
+            last_quote = repaired.rfind('"')
+            repaired = repaired[:last_quote + 1]
+        # Remove trailing comma or colon
+        repaired = repaired.rstrip(',: \n\t')
+        # Close open brackets/braces
+        repaired += ']' * open_brackets + '}' * open_braces
+        try:
+            _json.loads(repaired)
+            return repaired
+        except (_json.JSONDecodeError, ValueError):
+            return None
+
     # Try to extract JSON from mixed content (e.g., LLM adds text before/after JSON)
     review_data = None
     try:
         review_data = _json.loads(cleaned)
     except (_json.JSONDecodeError, ValueError):
-        pass
+        # Try repairing truncated JSON
+        repaired = _try_repair_json(cleaned)
+        if repaired:
+            try:
+                review_data = _json.loads(repaired)
+                print(f"[REVIEW] Repaired truncated JSON for reviewer {reviewer_level}")
+            except (_json.JSONDecodeError, ValueError):
+                pass
 
     if review_data is None:
         # Try to find a balanced JSON object containing "issues"
@@ -3086,12 +3121,15 @@ You are a senior technical writer at a blockchain company. Your task is to impro
 
 [Improved Report]"""
 
-    improved = generate_with_llm(prompt, max_tokens=3000, model=selected_model)
+    # Improvement rewrites the entire report — needs higher token budget and extended timeout
+    improve_timeout = max(get_model_timeout(selected_model) * 3, 180)
+    improve_max_tokens = 6000
+    improved = generate_with_llm(prompt, max_tokens=improve_max_tokens, model=selected_model, timeout_override=improve_timeout)
 
     if not improved:
         return JSONResponse({
             "success": False,
-            "error": "Failed to improve report. Check AI model availability.",
+            "error": "Failed to improve report. The AI model may have timed out. Try again or use a different model.",
         })
 
     return JSONResponse({

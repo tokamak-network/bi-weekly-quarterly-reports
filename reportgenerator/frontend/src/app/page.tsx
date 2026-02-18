@@ -286,6 +286,7 @@ export default function Home() {
   const [reviewingLevel, setReviewingLevel] = useState<number | null>(null)
   const [expandedReview, setExpandedReview] = useState<number | null>(null)
   const [improving, setImproving] = useState(false)
+  const [improveError, setImproveError] = useState<string | null>(null)
   const [improvedReport, setImprovedReport] = useState<string | null>(null)
   const [copiedFinal, setCopiedFinal] = useState(false)
   const [viewMode, setViewMode] = useState<'original' | 'improved' | 'diff'>('original')
@@ -591,6 +592,7 @@ export default function Home() {
     const activeReviews = reviews.filter((r) => selectedReviewers.has(r.reviewer_level))
     if (activeReviews.length === 0) return
     setImproving(true)
+    setImproveError(null)
 
     // Save pre-improvement scores
     const scores: Record<number, number> = {}
@@ -607,15 +609,30 @@ export default function Home() {
       formData.append('reviews_json', JSON.stringify(activeReviews))
       formData.append('model', selectedModel)
 
-      const response = await fetch('http://localhost:8000/api/improve', { method: 'POST', body: formData })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 240000) // 4-minute timeout
+
+      const response = await fetch('http://localhost:8000/api/improve', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
       if (!response.ok) throw new Error('Improve request failed')
 
       const data = await response.json()
-      if (data.success) {
+      if (data.success && data.improved_report) {
         setImprovedReport(data.improved_report)
         setViewMode('diff')
+      } else {
+        setImproveError(data.error || 'Improvement returned empty result. Try again.')
       }
     } catch (error) {
+      const msg = error instanceof Error && error.name === 'AbortError'
+        ? 'Improvement timed out (4 min). Try a shorter report or different model.'
+        : `Improve failed: ${error instanceof Error ? error.message : 'Network error'}`
+      setImproveError(msg)
       console.error('Improve failed:', error)
     } finally {
       setImproving(false)
@@ -1620,6 +1637,12 @@ export default function Home() {
                   `Improve with ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
                 )}
               </button>
+
+              {improveError && (
+                <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
+                  <p className="text-xs font-medium text-red-700">{improveError}</p>
+                </div>
+              )}
 
               {improvedReport && (
                 <div className="mt-3 space-y-3">
