@@ -514,7 +514,7 @@ export default function Home() {
       formData.append('model', selectedModel)
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180000)
+      const timeoutId = setTimeout(() => controller.abort(), 360000) // 6-minute timeout for large reports
 
       const response = await fetch('http://localhost:8000/api/review', {
         method: 'POST',
@@ -548,7 +548,7 @@ export default function Home() {
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        setReviewError('Review timed out (3 min). Try again or use a faster model.')
+        setReviewError('Review timed out (6 min). Try again or use a faster model.')
       } else {
         setReviewError(`Review failed: ${error instanceof Error ? error.message : 'Network error'}`)
       }

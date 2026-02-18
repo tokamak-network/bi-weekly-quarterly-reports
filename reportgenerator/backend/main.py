@@ -2879,7 +2879,7 @@ async def _do_review(report_text: str, report_type: str, reviewer_level: int, se
 {report_type_label}
 {format_context}
 [Report to Review]
-{report_text}
+{truncated_report}
 
 [Output Format]
 Provide your review as JSON. For each issue, include the EXACT original text and your proposed revision so the author can see specific suggested changes (like Google Docs "Suggest edits" mode):
@@ -2907,9 +2907,17 @@ IMPORTANT:
 - Output ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include any text before or after the JSON.
 - Start your response with the opening brace {{ and end with the closing brace }}."""
 
-    review_timeout = max(get_model_timeout(selected_model) * 2, 120)
+    review_timeout = max(get_model_timeout(selected_model) * 3, 180)
     # Use higher token budget for reviews with original_text/revised_text fields
     review_max_tokens = 4500
+
+    # Truncate very long reports to avoid LLM timeout on large inputs
+    MAX_REVIEW_CHARS = 15000
+    if len(report_text) > MAX_REVIEW_CHARS:
+        truncated_report = report_text[:MAX_REVIEW_CHARS] + "\n\n[... Report truncated for review. Reviewing first portion only ...]"
+        print(f"[REVIEW] Report truncated from {len(report_text)} to {MAX_REVIEW_CHARS} chars for reviewer {reviewer_level}")
+    else:
+        truncated_report = report_text
     llm_errors: List[str] = []
     response = generate_with_llm(prompt, max_tokens=review_max_tokens, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
@@ -3045,21 +3053,21 @@ IMPORTANT:
             })
     review_data["issues"] = valid_issues
 
-    # If review has no issues and no strengths, retry once with a stricter prompt
+    # If review has no issues and no strengths, retry once with a much shorter/stricter prompt
     if len(review_data["issues"]) == 0 and len(review_data.get("strengths", [])) == 0:
-        print(f"[REVIEW] Empty review from reviewer {reviewer_level}, retrying with strict JSON prompt...")
-        retry_prompt = f"""{active_prompt_prefix}
+        print(f"[REVIEW] Empty review from reviewer {reviewer_level}, retrying with lightweight prompt...")
+        # Use only first 2000 chars and a very short timeout for retry
+        retry_timeout = min(60, review_timeout // 2)
+        retry_prompt = f"""Review this report excerpt and respond with ONLY JSON. No other text.
 
-[Report to Review]
-{report_text[:3000]}
+{truncated_report[:2000]}
 
-You MUST respond with ONLY a JSON object. No other text.
-The JSON must have this exact structure:
-{{"issues":[{{"category":"clarity","description":"describe the issue","suggestion":"how to fix","severity":"medium","original_text":"exact text from report","revised_text":"improved version"}}],"strengths":["strength1","strength2"],"overall_score":5,"summary":"overall assessment"}}
+Respond with this exact JSON format:
+{{"issues":[{{"category":"clarity","description":"issue description","suggestion":"fix suggestion","severity":"medium","original_text":"exact quote","revised_text":"improved version"}}],"strengths":["strength 1"],"overall_score":6,"summary":"brief assessment"}}
 
-Provide at least 2 issues and 2 strengths. Start with {{ and end with }}."""
+Give 2-3 issues and 2 strengths. Start with {{ end with }}."""
 
-        retry_response = generate_with_llm(retry_prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout)
+        retry_response = generate_with_llm(retry_prompt, max_tokens=2000, model=selected_model, timeout_override=retry_timeout)
         if retry_response:
             retry_cleaned = retry_response.strip()
             if "```" in retry_cleaned:
@@ -3067,28 +3075,26 @@ Provide at least 2 issues and 2 strengths. Start with {{ and end with }}."""
             first_b = retry_cleaned.find('{')
             if first_b > 0:
                 retry_cleaned = retry_cleaned[first_b:]
-            # Try repair if needed
             repaired_retry = _try_repair_json(retry_cleaned)
             retry_text = repaired_retry or retry_cleaned
             try:
                 retry_data = _json.loads(retry_text)
                 if isinstance(retry_data.get("issues"), list) and len(retry_data["issues"]) > 0:
                     print(f"[REVIEW] Retry succeeded for reviewer {reviewer_level}")
-                    review_data = retry_data
-                    # Re-validate
-                    if not isinstance(review_data.get("strengths"), list):
-                        review_data["strengths"] = []
-                    raw_score2 = review_data.get("overall_score")
-                    if not isinstance(raw_score2, (int, float)):
-                        if isinstance(raw_score2, str):
-                            m2 = re.search(r'(\d+(?:\.\d+)?)', raw_score2)
-                            review_data["overall_score"] = float(m2.group(1)) if m2 else 5
-                        else:
-                            review_data["overall_score"] = 5
-                    if not isinstance(review_data.get("summary"), str) or not review_data["summary"].strip():
-                        review_data["summary"] = "Review completed."
+                    # Merge retry data, re-validating fields
+                    if isinstance(retry_data.get("strengths"), list):
+                        review_data["strengths"] = retry_data["strengths"]
+                    if isinstance(retry_data.get("summary"), str) and retry_data["summary"].strip():
+                        review_data["summary"] = retry_data["summary"]
+                    rs = retry_data.get("overall_score")
+                    if isinstance(rs, (int, float)):
+                        review_data["overall_score"] = rs
+                    elif isinstance(rs, str):
+                        m2 = re.search(r'(\d+(?:\.\d+)?)', rs)
+                        if m2:
+                            review_data["overall_score"] = float(m2.group(1))
                     valid_retry = []
-                    for issue in review_data.get("issues", []):
+                    for issue in retry_data["issues"]:
                         if isinstance(issue, dict) and isinstance(issue.get("description"), str) and issue["description"].strip():
                             valid_retry.append({
                                 "category": issue.get("category", "general") if isinstance(issue.get("category"), str) else "general",
