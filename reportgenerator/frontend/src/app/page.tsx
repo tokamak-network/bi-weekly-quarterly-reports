@@ -738,6 +738,14 @@ export default function Home() {
           formData.append('reviewer_level', level.toString())
           formData.append('model', selectedModel)
 
+          // Pass previous review context so reviewer can compare against their prior assessment
+          const previousReview = reviews.find((r) => r.reviewer_level === level)
+          if (previousReview) {
+            formData.append('is_improved', 'true')
+            formData.append('previous_score', (previousReview.review?.overall_score ?? '').toString())
+            formData.append('previous_summary', previousReview.review?.summary ?? '')
+          }
+
           const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
           if (!response.ok) return { level, score: null }
           const data = await response.json()
