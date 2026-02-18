@@ -2873,6 +2873,14 @@ async def _do_review(report_text: str, report_type: str, reviewer_level: int, se
             "and the engineering narrative is clear and comprehensive.\n"
         )
 
+    # Truncate very long reports to avoid LLM timeout on large inputs
+    MAX_REVIEW_CHARS = 15000
+    if len(report_text) > MAX_REVIEW_CHARS:
+        truncated_report = report_text[:MAX_REVIEW_CHARS] + "\n\n[... Report truncated for review. Reviewing first portion only ...]"
+        print(f"[REVIEW] Report truncated from {len(report_text)} to {MAX_REVIEW_CHARS} chars for reviewer {reviewer_level}")
+    else:
+        truncated_report = report_text
+
     prompt = f"""{active_prompt_prefix}
 
 [Report Type]
@@ -2910,14 +2918,6 @@ IMPORTANT:
     review_timeout = max(get_model_timeout(selected_model) * 3, 180)
     # Use higher token budget for reviews with original_text/revised_text fields
     review_max_tokens = 4500
-
-    # Truncate very long reports to avoid LLM timeout on large inputs
-    MAX_REVIEW_CHARS = 15000
-    if len(report_text) > MAX_REVIEW_CHARS:
-        truncated_report = report_text[:MAX_REVIEW_CHARS] + "\n\n[... Report truncated for review. Reviewing first portion only ...]"
-        print(f"[REVIEW] Report truncated from {len(report_text)} to {MAX_REVIEW_CHARS} chars for reviewer {reviewer_level}")
-    else:
-        truncated_report = report_text
     llm_errors: List[str] = []
     response = generate_with_llm(prompt, max_tokens=review_max_tokens, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
