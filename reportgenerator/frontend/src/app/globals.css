@@ -19,6 +19,14 @@ body {
   min-height: 100vh;
 }
 
+.prose h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  color: #111827;
+}
+
 .prose h4 {
   font-size: 1.1rem;
   font-weight: 600;
@@ -43,6 +51,15 @@ body {
 .markdown-preview {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.6;
+}
+
+.markdown-preview h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.75rem 0;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
 }
 
 .markdown-preview h4 {

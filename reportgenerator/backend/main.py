@@ -2873,13 +2873,21 @@ async def _do_review(report_text: str, report_type: str, reviewer_level: int, se
             "and the engineering narrative is clear and comprehensive.\n"
         )
 
+    # Truncate very long reports to avoid LLM timeout on large inputs
+    MAX_REVIEW_CHARS = 15000
+    if len(report_text) > MAX_REVIEW_CHARS:
+        truncated_report = report_text[:MAX_REVIEW_CHARS] + "\n\n[... Report truncated for review. Reviewing first portion only ...]"
+        print(f"[REVIEW] Report truncated from {len(report_text)} to {MAX_REVIEW_CHARS} chars for reviewer {reviewer_level}")
+    else:
+        truncated_report = report_text
+
     prompt = f"""{active_prompt_prefix}
 
 [Report Type]
 {report_type_label}
 {format_context}
 [Report to Review]
-{report_text}
+{truncated_report}
 
 [Output Format]
 Provide your review as JSON. For each issue, include the EXACT original text and your proposed revision so the author can see specific suggested changes (like Google Docs "Suggest edits" mode):
@@ -2900,13 +2908,18 @@ Provide your review as JSON. For each issue, include the EXACT original text and
 }}
 
 IMPORTANT:
-- For each issue, you MUST include original_text (copied from the report) and revised_text (your improved version).
+- For each issue, you MUST include original_text (copied EXACTLY from the report) and revised_text (your improved version).
 - Be specific and constructive. Show exactly what to change, not just what's wrong.
-- Output ONLY the JSON. No additional text or markdown fences."""
+- You MUST provide at least 3 issues and at least 2 strengths.
+- The overall_score MUST be an integer between 1 and 10.
+- Output ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include any text before or after the JSON.
+- Start your response with the opening brace {{ and end with the closing brace }}."""
 
-    review_timeout = max(get_model_timeout(selected_model) * 2, 120)
+    review_timeout = max(get_model_timeout(selected_model) * 3, 180)
+    # Use higher token budget for reviews with original_text/revised_text fields
+    review_max_tokens = 4500
     llm_errors: List[str] = []
-    response = generate_with_llm(prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
+    response = generate_with_llm(prompt, max_tokens=review_max_tokens, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
     if not response:
         error_detail = "; ".join(llm_errors) if llm_errors else "All AI providers failed"
@@ -2923,13 +2936,50 @@ IMPORTANT:
     if "```" in cleaned:
         cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned)
         cleaned = cleaned.strip()
+    # Strip any leading text before the first { (e.g., "Here is my review:")
+    first_brace = cleaned.find('{')
+    if first_brace > 0:
+        cleaned = cleaned[first_brace:]
+
+    # Attempt to repair truncated JSON (common with token limits)
+    def _try_repair_json(s: str) -> Optional[str]:
+        """Try to close truncated JSON by adding missing brackets."""
+        if not s.strip():
+            return None
+        # Count open braces/brackets
+        open_braces = s.count('{') - s.count('}')
+        open_brackets = s.count('[') - s.count(']')
+        if open_braces <= 0 and open_brackets <= 0:
+            return None  # Not truncated
+        # Remove trailing incomplete string/value
+        repaired = s.rstrip()
+        # Remove trailing partial string (ends mid-string without closing quote)
+        if repaired.count('"') % 2 == 1:
+            last_quote = repaired.rfind('"')
+            repaired = repaired[:last_quote + 1]
+        # Remove trailing comma or colon
+        repaired = repaired.rstrip(',: \n\t')
+        # Close open brackets/braces
+        repaired += ']' * open_brackets + '}' * open_braces
+        try:
+            _json.loads(repaired)
+            return repaired
+        except (_json.JSONDecodeError, ValueError):
+            return None
 
     # Try to extract JSON from mixed content (e.g., LLM adds text before/after JSON)
     review_data = None
     try:
         review_data = _json.loads(cleaned)
     except (_json.JSONDecodeError, ValueError):
-        pass
+        # Try repairing truncated JSON
+        repaired = _try_repair_json(cleaned)
+        if repaired:
+            try:
+                review_data = _json.loads(repaired)
+                print(f"[REVIEW] Repaired truncated JSON for reviewer {reviewer_level}")
+            except (_json.JSONDecodeError, ValueError):
+                pass
 
     if review_data is None:
         # Try to find a balanced JSON object containing "issues"
@@ -2962,11 +3012,13 @@ IMPORTANT:
                 pass
 
     if review_data is None:
+        print(f"[REVIEW] WARNING: Failed to parse JSON from reviewer {reviewer_level}. Raw response length: {len(cleaned)}")
+        print(f"[REVIEW] Raw response preview: {cleaned[:500]}")
         review_data = {
             "issues": [],
             "strengths": [],
             "overall_score": 5,
-            "summary": cleaned[:2000] if len(cleaned) > 2000 else cleaned,
+            "summary": f"Review could not be parsed into structured feedback. Raw response: {cleaned[:1500]}" if cleaned else "Review completed but no structured feedback was generated.",
         }
 
     # Ensure required fields exist with correct types
@@ -2974,10 +3026,87 @@ IMPORTANT:
         review_data["issues"] = []
     if not isinstance(review_data.get("strengths"), list):
         review_data["strengths"] = []
-    if not isinstance(review_data.get("overall_score"), (int, float)):
-        review_data["overall_score"] = 5
-    if not isinstance(review_data.get("summary"), str):
+
+    # Parse overall_score from various formats (e.g., "5/10", "5 out of 10", "5.0")
+    raw_score = review_data.get("overall_score")
+    if not isinstance(raw_score, (int, float)):
+        if isinstance(raw_score, str):
+            score_match = re.search(r'(\d+(?:\.\d+)?)', raw_score)
+            review_data["overall_score"] = float(score_match.group(1)) if score_match else 5
+        else:
+            review_data["overall_score"] = 5
+
+    if not isinstance(review_data.get("summary"), str) or not review_data["summary"].strip():
         review_data["summary"] = "Review completed."
+
+    # Validate that issue objects have required fields; drop malformed entries
+    valid_issues = []
+    for issue in review_data.get("issues", []):
+        if isinstance(issue, dict) and isinstance(issue.get("description"), str) and issue["description"].strip():
+            valid_issues.append({
+                "category": issue.get("category", "general") if isinstance(issue.get("category"), str) else "general",
+                "description": issue["description"],
+                "suggestion": issue.get("suggestion", "") if isinstance(issue.get("suggestion"), str) else "",
+                "severity": issue.get("severity", "medium") if issue.get("severity") in ("low", "medium", "high") else "medium",
+                "original_text": issue.get("original_text", "") if isinstance(issue.get("original_text"), str) else "",
+                "revised_text": issue.get("revised_text", "") if isinstance(issue.get("revised_text"), str) else "",
+            })
+    review_data["issues"] = valid_issues
+
+    # If review has no issues and no strengths, retry once with a much shorter/stricter prompt
+    if len(review_data["issues"]) == 0 and len(review_data.get("strengths", [])) == 0:
+        print(f"[REVIEW] Empty review from reviewer {reviewer_level}, retrying with lightweight prompt...")
+        # Use only first 2000 chars and a very short timeout for retry
+        retry_timeout = min(60, review_timeout // 2)
+        retry_prompt = f"""Review this report excerpt and respond with ONLY JSON. No other text.
+
+{truncated_report[:2000]}
+
+Respond with this exact JSON format:
+{{"issues":[{{"category":"clarity","description":"issue description","suggestion":"fix suggestion","severity":"medium","original_text":"exact quote","revised_text":"improved version"}}],"strengths":["strength 1"],"overall_score":6,"summary":"brief assessment"}}
+
+Give 2-3 issues and 2 strengths. Start with {{ end with }}."""
+
+        retry_response = generate_with_llm(retry_prompt, max_tokens=2000, model=selected_model, timeout_override=retry_timeout)
+        if retry_response:
+            retry_cleaned = retry_response.strip()
+            if "```" in retry_cleaned:
+                retry_cleaned = re.sub(r"```(?:json)?\s*\n?", "", retry_cleaned).strip()
+            first_b = retry_cleaned.find('{')
+            if first_b > 0:
+                retry_cleaned = retry_cleaned[first_b:]
+            repaired_retry = _try_repair_json(retry_cleaned)
+            retry_text = repaired_retry or retry_cleaned
+            try:
+                retry_data = _json.loads(retry_text)
+                if isinstance(retry_data.get("issues"), list) and len(retry_data["issues"]) > 0:
+                    print(f"[REVIEW] Retry succeeded for reviewer {reviewer_level}")
+                    # Merge retry data, re-validating fields
+                    if isinstance(retry_data.get("strengths"), list):
+                        review_data["strengths"] = retry_data["strengths"]
+                    if isinstance(retry_data.get("summary"), str) and retry_data["summary"].strip():
+                        review_data["summary"] = retry_data["summary"]
+                    rs = retry_data.get("overall_score")
+                    if isinstance(rs, (int, float)):
+                        review_data["overall_score"] = rs
+                    elif isinstance(rs, str):
+                        m2 = re.search(r'(\d+(?:\.\d+)?)', rs)
+                        if m2:
+                            review_data["overall_score"] = float(m2.group(1))
+                    valid_retry = []
+                    for issue in retry_data["issues"]:
+                        if isinstance(issue, dict) and isinstance(issue.get("description"), str) and issue["description"].strip():
+                            valid_retry.append({
+                                "category": issue.get("category", "general") if isinstance(issue.get("category"), str) else "general",
+                                "description": issue["description"],
+                                "suggestion": issue.get("suggestion", "") if isinstance(issue.get("suggestion"), str) else "",
+                                "severity": issue.get("severity", "medium") if issue.get("severity") in ("low", "medium", "high") else "medium",
+                                "original_text": issue.get("original_text", "") if isinstance(issue.get("original_text"), str) else "",
+                                "revised_text": issue.get("revised_text", "") if isinstance(issue.get("revised_text"), str) else "",
+                            })
+                    review_data["issues"] = valid_retry
+            except (_json.JSONDecodeError, ValueError):
+                print(f"[REVIEW] Retry also failed for reviewer {reviewer_level}")
 
     return JSONResponse({
         "success": True,
@@ -3086,12 +3215,15 @@ You are a senior technical writer at a blockchain company. Your task is to impro
 
 [Improved Report]"""
 
-    improved = generate_with_llm(prompt, max_tokens=3000, model=selected_model)
+    # Improvement rewrites the entire report — needs higher token budget and extended timeout
+    improve_timeout = max(get_model_timeout(selected_model) * 3, 180)
+    improve_max_tokens = 6000
+    improved = generate_with_llm(prompt, max_tokens=improve_max_tokens, model=selected_model, timeout_override=improve_timeout)
 
     if not improved:
         return JSONResponse({
             "success": False,
-            "error": "Failed to improve report. Check AI model availability.",
+            "error": "Failed to improve report. The AI model may have timed out. Try again or use a different model.",
         })
 
     return JSONResponse({

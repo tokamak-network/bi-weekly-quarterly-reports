@@ -32,6 +32,14 @@ interface ReviewResult {
   review: ReviewData
 }
 
+interface AppliedChange {
+  issueKey: string
+  reviewerKo: string
+  category: string
+  originalText: string
+  revisedText: string
+}
+
 interface DiffSegment {
   type: 'unchanged' | 'added' | 'removed'
   text: string
@@ -180,8 +188,8 @@ const resolveReportScope = (value: string) => {
 
 function renderMarkdown(md: string) {
   return md
-    .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-gray-900 mt-6 mb-2">$1</h3>')
-    .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3 style="font-size:1.25rem;font-weight:700;color:#111827;margin:1.5rem 0 0.5rem;padding-bottom:0.4rem;border-bottom:1px solid #e5e7eb;white-space:normal">$1</h3>')
+    .replace(/^#### (.+)$/gm, '<h4 style="font-size:1.1rem;font-weight:600;color:#1f2937;margin:1rem 0 0.5rem;white-space:normal">$1</h4>')
     .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
     .replace(/^- (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
@@ -286,6 +294,7 @@ export default function Home() {
   const [reviewingLevel, setReviewingLevel] = useState<number | null>(null)
   const [expandedReview, setExpandedReview] = useState<number | null>(null)
   const [improving, setImproving] = useState(false)
+  const [improveError, setImproveError] = useState<string | null>(null)
   const [improvedReport, setImprovedReport] = useState<string | null>(null)
   const [copiedFinal, setCopiedFinal] = useState(false)
   const [viewMode, setViewMode] = useState<'original' | 'improved' | 'diff'>('original')
@@ -294,6 +303,7 @@ export default function Home() {
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [highlightedText, setHighlightedText] = useState<string | null>(null)
   const [appliedIssues, setAppliedIssues] = useState<Set<string>>(new Set())
+  const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
   const [selectedReviewers, setSelectedReviewers] = useState<Set<number>>(new Set())
   const [preScores, setPreScores] = useState<Record<number, number>>({})
   const [postScores, setPostScores] = useState<Record<number, number>>({})
@@ -376,6 +386,8 @@ export default function Home() {
       if (!response.ok) throw new Error('Failed to generate report')
 
       const data = await response.json()
+      console.log('[DEBUG] full_report type:', typeof data.full_report, 'value:', data.full_report ? data.full_report.substring(0, 100) : data.full_report)
+      console.log('[DEBUG] sections count:', data.sections?.length, 'titles:', data.sections?.map((s: { title?: string }) => s.title))
       const reportSections: ReportSection[] = Array.isArray(data.sections)
         ? data.sections.map((s: ReportSection) => ({ title: s.title, content: s.content }))
         : []
@@ -393,9 +405,12 @@ export default function Home() {
             `### Highlight\n\n${data.highlight}\n`,
             `### Development Activity\n`,
             data.sections?.map((s: { title?: string; content: string }) =>
-              `${s.title ? `#### ${s.title}\n` : ''}${s.content}`
+              `${s.title ? `\n### ${s.title}\n\n` : '\n'}${s.content}`
             ).join('\n') ?? '',
           ].join('\n')
+
+      console.log('[DEBUG] fullReportContent is null:', fullReportContent === null)
+      console.log('[DEBUG] rawContent first 500 chars:', rawContent.substring(0, 500))
 
       setHighlight(data.highlight || '')
       setReportTitle(fullReportContent ? null : data.title || null)
@@ -499,7 +514,7 @@ export default function Home() {
       formData.append('model', selectedModel)
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180000)
+      const timeoutId = setTimeout(() => controller.abort(), 360000) // 6-minute timeout for large reports
 
       const response = await fetch('http://localhost:8000/api/review', {
         method: 'POST',
@@ -523,14 +538,17 @@ export default function Home() {
           const filtered = prev.filter((r) => r.reviewer_level !== level)
           return [...filtered, data as ReviewResult].sort((a, b) => a.reviewer_level - b.reviewer_level)
         })
-        setSelectedReviewers((prev) => { const next = new Set(Array.from(prev)); next.add(level); return next })
+        // Only auto-select reviewer if the review has actionable feedback (issues)
+        if (data.review?.issues?.length > 0) {
+          setSelectedReviewers((prev) => { const next = new Set(Array.from(prev)); next.add(level); return next })
+        }
         setExpandedReview(level)
       } else {
         setReviewError(`Review failed: ${data.error || 'Unknown error'}`)
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        setReviewError('Review timed out (3 min). Try again or use a faster model.')
+        setReviewError('Review timed out (6 min). Try again or use a faster model.')
       } else {
         setReviewError(`Review failed: ${error instanceof Error ? error.message : 'Network error'}`)
       }
@@ -539,16 +557,48 @@ export default function Home() {
     }
   }
 
-  const handleApplyIssue = (issue: ReviewIssue) => {
+  const handleApplyIssue = (issue: ReviewIssue, reviewerKo?: string) => {
     if (!issue.original_text || !issue.revised_text) return
     const issueKey = `${issue.original_text}::${issue.revised_text}`
     const report = editingReport ? editableText : (fullReport ?? rawMarkdown)
-    const updated = report.replace(issue.original_text, issue.revised_text)
+
+    // Try exact match first
+    let updated = report.replace(issue.original_text, issue.revised_text)
+
+    // If exact match failed, try flexible whitespace matching
+    if (updated === report) {
+      try {
+        const escaped = issue.original_text
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\s+/g, '\\s+')
+        const regex = new RegExp(escaped)
+        updated = report.replace(regex, issue.revised_text)
+      } catch { /* regex construction failed */ }
+    }
+
+    // If still failed, try case-insensitive match
+    if (updated === report) {
+      try {
+        const escaped = issue.original_text
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\s+/g, '\\s+')
+        const regex = new RegExp(escaped, 'i')
+        updated = report.replace(regex, issue.revised_text)
+      } catch { /* regex construction failed */ }
+    }
+
     if (updated !== report) {
       setFullReport(updated)
       setRawMarkdown(updated)
       if (editingReport) setEditableText(updated)
       setAppliedIssues((prev) => { const next = new Set(Array.from(prev)); next.add(issueKey); return next })
+      setAppliedChanges((prev) => [...prev, {
+        issueKey,
+        reviewerKo: reviewerKo ?? 'Reviewer',
+        category: issue.category,
+        originalText: issue.original_text!,
+        revisedText: issue.revised_text!,
+      }])
       setHighlightedText(null)
     }
   }
@@ -583,9 +633,23 @@ export default function Home() {
   }
 
   const handleImprove = async () => {
-    const activeReviews = reviews.filter((r) => selectedReviewers.has(r.reviewer_level))
+    // Filter selected reviews and exclude already-applied issues
+    const activeReviews = reviews
+      .filter((r) => selectedReviewers.has(r.reviewer_level))
+      .map((r) => ({
+        ...r,
+        review: {
+          ...r.review,
+          issues: r.review.issues.filter((issue) => {
+            if (!issue.original_text || !issue.revised_text) return true
+            const issueKey = `${issue.original_text}::${issue.revised_text}`
+            return !appliedIssues.has(issueKey)
+          })
+        }
+      }))
     if (activeReviews.length === 0) return
     setImproving(true)
+    setImproveError(null)
 
     // Save pre-improvement scores
     const scores: Record<number, number> = {}
@@ -602,15 +666,30 @@ export default function Home() {
       formData.append('reviews_json', JSON.stringify(activeReviews))
       formData.append('model', selectedModel)
 
-      const response = await fetch('http://localhost:8000/api/improve', { method: 'POST', body: formData })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 240000) // 4-minute timeout
+
+      const response = await fetch('http://localhost:8000/api/improve', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
       if (!response.ok) throw new Error('Improve request failed')
 
       const data = await response.json()
-      if (data.success) {
+      if (data.success && data.improved_report) {
         setImprovedReport(data.improved_report)
         setViewMode('diff')
+      } else {
+        setImproveError(data.error || 'Improvement returned empty result. Try again.')
       }
     } catch (error) {
+      const msg = error instanceof Error && error.name === 'AbortError'
+        ? 'Improvement timed out (4 min). Try a shorter report or different model.'
+        : `Improve failed: ${error instanceof Error ? error.message : 'Network error'}`
+      setImproveError(msg)
       console.error('Improve failed:', error)
     } finally {
       setImproving(false)
@@ -1292,6 +1371,40 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Applied changes log */}
+            {appliedChanges.length > 0 && viewMode === 'original' && !editingReport && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[10px] font-semibold uppercase text-blue-600">
+                    Applied Changes ({appliedChanges.length})
+                  </div>
+                  <button
+                    onClick={() => { setAppliedChanges([]); setAppliedIssues(new Set()) }}
+                    className="text-[10px] text-gray-400 hover:text-gray-600"
+                  >
+                    Clear log
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                  {appliedChanges.map((c, i) => (
+                    <div key={i} className="rounded-lg bg-white border border-blue-100 p-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700">
+                          {c.reviewerKo}
+                        </span>
+                        <span className="text-[9px] text-gray-400">{c.category}</span>
+                      </div>
+                      <div className="text-[10px] leading-4">
+                        <span className="text-red-500 line-through">{c.originalText.length > 80 ? c.originalText.slice(0, 80) + '...' : c.originalText}</span>
+                        <span className="mx-1 text-gray-300">&rarr;</span>
+                        <span className="text-emerald-600">{c.revisedText.length > 80 ? c.revisedText.slice(0, 80) + '...' : c.revisedText}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div ref={reportContentRef} className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
@@ -1425,6 +1538,23 @@ export default function Home() {
                               {/* Summary */}
                               <p className="text-xs text-gray-600 leading-5">{result.review.summary}</p>
 
+                              {/* Warning when no structured feedback was generated */}
+                              {(!result.review.issues || result.review.issues.length === 0) &&
+                               (!result.review.strengths || result.review.strengths.length === 0) && (
+                                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                  <p className="text-[11px] text-amber-700 font-medium">
+                                    구조화된 피드백이 생성되지 않았습니다. AI 응답 파싱에 실패했을 수 있습니다.
+                                  </p>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleReview(reviewer.level) }}
+                                    disabled={isReviewing}
+                                    className="mt-2 rounded-lg bg-amber-100 px-3 py-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200 transition disabled:opacity-50"
+                                  >
+                                    {isReviewing ? 'Reviewing...' : 'Retry Review'}
+                                  </button>
+                                </div>
+                              )}
+
                               {/* Strengths */}
                               {result.review.strengths && result.review.strengths.length > 0 && (
                                 <div>
@@ -1483,7 +1613,7 @@ export default function Home() {
                                               <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
                                               {!isApplied && (
                                                 <button
-                                                  onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue) }}
+                                                  onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue, result.reviewer_ko) }}
                                                   className="mt-1 rounded bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-blue-700 transition"
                                                 >
                                                   Apply this change
@@ -1601,7 +1731,11 @@ export default function Home() {
 
               <button
                 onClick={handleImprove}
-                disabled={selectedReviewers.size === 0 || improving}
+                disabled={
+                  selectedReviewers.size === 0 ||
+                  improving ||
+                  !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0)
+                }
                 className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {improving ? (
@@ -1611,10 +1745,18 @@ export default function Home() {
                   </span>
                 ) : selectedReviewers.size === 0 ? (
                   'Select reviewers to apply'
+                ) : !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0) ? (
+                  'No actionable feedback to apply'
                 ) : (
                   `Improve with ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
                 )}
               </button>
+
+              {improveError && (
+                <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
+                  <p className="text-xs font-medium text-red-700">{improveError}</p>
+                </div>
+              )}
 
               {improvedReport && (
                 <div className="mt-3 space-y-3">
