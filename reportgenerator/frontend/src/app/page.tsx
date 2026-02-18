@@ -314,6 +314,13 @@ export default function Home() {
   const modelCandidateList = [...MODEL_OPTIONS]
   const exportContent = improvedReport ?? fullReport ?? rawMarkdown
 
+  const originalReport = fullReport ?? rawMarkdown
+  const currentReport = viewMode === 'improved' && improvedReport ? improvedReport : (editingReport ? editableText : originalReport)
+  const diffSegments = useMemo(() => {
+    if (!improvedReport) return []
+    return computeDiff(originalReport, improvedReport)
+  }, [originalReport, improvedReport])
+
   /* ---- Drag prevention ---- */
   useEffect(() => {
     const preventDefaults = (event: DragEvent) => {
@@ -859,13 +866,6 @@ export default function Home() {
   /* ================================================================ */
   /* STEP 2 — Review & Improve                                         */
   /* ================================================================ */
-
-  const originalReport = fullReport ?? rawMarkdown
-  const currentReport = viewMode === 'improved' && improvedReport ? improvedReport : (editingReport ? editableText : originalReport)
-  const diffSegments = useMemo(() => {
-    if (!improvedReport) return []
-    return computeDiff(originalReport, improvedReport)
-  }, [originalReport, improvedReport])
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
