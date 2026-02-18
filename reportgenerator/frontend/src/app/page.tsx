@@ -100,15 +100,10 @@ const REVIEWERS = [
 const MODEL_OPTIONS = [
   'gpt-5.2-pro',
   'gpt-5.2-mini',
-  'gpt-4.1',
-  'o3-pro',
-  'o3-mini',
-  'o4-mini',
-  'claude-sonnet-4-5-20250514',
-  'claude-opus-4-20250514',
-  'claude-haiku-3-5-20241022',
-  'gemini-2.5-pro-preview-05-06',
-  'gemini-2.5-flash-preview-04-17',
+  'gemini-3-pro',
+  'gemini-3-flash',
+  'deepseek-v3',
+  'qwen3-235b-thinking',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
