@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { CalendarDays, Upload } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
 
@@ -95,6 +95,20 @@ const REVIEWERS = [
     badge: 'bg-violet-100 text-violet-700',
     dot: 'bg-violet-400',
   },
+]
+
+const MODEL_OPTIONS = [
+  'gpt-5.2-pro',
+  'gpt-5.2-mini',
+  'gpt-4.1',
+  'o3-pro',
+  'o3-mini',
+  'o4-mini',
+  'claude-sonnet-4-5-20250514',
+  'claude-opus-4-20250514',
+  'claude-haiku-3-5-20241022',
+  'gemini-2.5-pro-preview-05-06',
+  'gemini-2.5-flash-preview-04-17',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
@@ -221,6 +235,8 @@ export default function Home() {
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
   const [fullReport, setFullReport] = useState<string | null>(null)
   const [repoMeta, setRepoMeta] = useState<{ applied: boolean; total: number; shown: number } | null>(null)
+  const [selectedModel, setSelectedModel] = useState('gpt-5.2-pro')
+  const [showModelMenu, setShowModelMenu] = useState(false)
 
   /* ---- Step 2: Review & Improve ---- */
   const [reviews, setReviews] = useState<ReviewResult[]>([])
@@ -250,7 +266,22 @@ export default function Home() {
     return `${range}  |  ${stats.commits} commits  |  ${stats.repos} repos`
   }, [generated, stats, dateRange])
 
+  const modelCandidateList = [...MODEL_OPTIONS]
   const exportContent = improvedReport ?? fullReport ?? rawMarkdown
+
+  /* ---- Drag prevention ---- */
+  useEffect(() => {
+    const preventDefaults = (event: DragEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    window.addEventListener('dragover', preventDefaults)
+    window.addEventListener('drop', preventDefaults)
+    return () => {
+      window.removeEventListener('dragover', preventDefaults)
+      window.removeEventListener('drop', preventDefaults)
+    }
+  }, [])
 
   /* ---- Handlers ---- */
 
@@ -274,6 +305,7 @@ export default function Home() {
       formData.append('member_filter', 'all')
       formData.append('report_grouping', reportGrouping)
       formData.append('repo_limit', repoLimit)
+      formData.append('model', selectedModel)
 
       const response = await fetch('http://localhost:8000/api/generate', {
         method: 'POST',
@@ -584,6 +616,55 @@ export default function Home() {
                     >
                       <span className={`h-5 w-5 rounded-full bg-white shadow transition ${useAI ? 'translate-x-5' : 'translate-x-0'}`} />
                     </button>
+                  </div>
+                  {/* AI Model Selection */}
+                  <div className="rounded-lg border border-gray-200 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-gray-800">AI model selection</div>
+                        <p className="mt-1 text-xs text-gray-500">Choose a model to generate the report.</p>
+                      </div>
+                      <div className="text-xs font-medium text-gray-500">{selectedModel || 'None'}</div>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowModelMenu((prev) => !prev)}
+                        className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition hover:border-gray-300"
+                      >
+                        <span className="truncate">{selectedModel || 'Select model'}</span>
+                        <span className="ml-3 text-xs text-gray-400">{showModelMenu ? 'Hide' : 'Edit'}</span>
+                      </button>
+                      {showModelMenu && (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {modelCandidateList.map((modelName) => (
+                              <label key={modelName} className="flex items-center gap-2 text-sm text-gray-700">
+                                <input
+                                  type="radio"
+                                  name="report-model"
+                                  value={modelName}
+                                  checked={selectedModel === modelName}
+                                  onChange={() => { setSelectedModel(modelName); setShowModelMenu(false) }}
+                                  className="h-4 w-4 border-gray-300 text-blue-600"
+                                />
+                                <span>{modelName}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedModel('gpt-5.2-pro')}
+                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:border-gray-300"
+                        >
+                          Reset to default
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 text-[11px] text-gray-500">The selected model is used for report generation.</p>
                   </div>
                   {/* Grouping */}
                   <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
