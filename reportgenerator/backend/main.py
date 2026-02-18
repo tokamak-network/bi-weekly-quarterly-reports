@@ -13,6 +13,8 @@ from collections import defaultdict
 from typing import Optional, Tuple, List, Dict, Set, Any, TypedDict
 from datetime import datetime
 from pathlib import Path
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -115,6 +117,37 @@ SECTION_INFO_INDIVIDUAL_TECHNICAL = {
     "context": "Individual project work outside the three core initiatives.",
 }
 
+REPO_DESCRIPTIONS = {
+    # Ooo (Private App Channels)
+    "Tokamak-zk-EVM": "Core ZK-EVM engine enabling private smart contract execution with zero-knowledge proofs on Ethereum",
+    "Tokamak-zk-EVM-contracts": "On-chain smart contracts for ZK-EVM verification, deposit/withdrawal, and state management",
+    "private-app-channel-manager": "SDK for creating and managing private application channels with encrypted state transitions",
+    "tokamak-zkp-channel-manager-new": "Next-generation ZK proof channel manager with improved proof generation and verification",
+    "TokamakL2JS": "JavaScript library for interacting with Tokamak Layer 2 from web applications",
+    "Tokamak-zk-EVM-landing-page": "Public-facing website and documentation for the ZK-EVM project",
+    # Eco (Staking & Governance)
+    "ton-staking-v2": "TON token staking platform enabling holders to earn rewards while securing the network",
+    "tokamak-economics-whitepaper-v2": "Tokenomics research and whitepaper defining the TON economic model and incentive structures",
+    "RAT-frontend": "RAT (Reward-based Automated TON) verification interface for staking reward distribution",
+    "staking-community-version": "Community-accessible staking dashboard for TON holders to manage their staking positions",
+    "tokamak-dao-v2": "Decentralized governance platform where TON holders vote on protocol proposals and upgrades",
+    "tokamak-landing-page": "Main Tokamak Network website serving as the public entry point to the ecosystem",
+    # TRH (Rollup Hub)
+    "trh-sdk": "Developer SDK for deploying custom Layer 2 rollups on Tokamak Rollup Hub with minimal configuration",
+    "trh-backend": "Backend infrastructure powering the Tokamak Rollup Hub deployment and management services",
+    "trh-platform-ui": "Web-based dashboard for managing and monitoring deployed L2 rollup instances",
+    "DRB-node": "Distributed Random Beacon node providing verifiable randomness for rollup sequencing",
+    "tokamak-thanos": "Tokamak Thanos rollup stack — optimistic rollup implementation for Ethereum scaling",
+    "tokamak-rollup-hub-v2": "Next-generation Rollup Hub platform enabling one-click L2 chain deployment",
+    "tokamak-thanos-stack": "Full-stack tooling and infrastructure for operating Thanos-based rollup chains",
+    "tokamak-thanos-geth": "Modified Geth execution client optimized for the Tokamak Thanos rollup environment",
+    # Other ecosystem repos
+    "SentinAI": "AI-powered security sentinel for automated smart contract auditing, vulnerability detection, and verification reporting",
+    "zk-dex-d1-private-voting": "Zero-knowledge proof based decentralized voting system enabling private, verifiable on-chain governance",
+    "dust-protocol": "Privacy-focused protocol for confidential token transfers with fast withdrawal support and social login onboarding",
+    "auto-research-press": "Automated research publication platform that aggregates and publishes blockchain ecosystem analysis reports",
+}
+
 SECTION_INFO_INDIVIDUAL_PUBLIC = {
     "number": "2.5",
     "title": "Individual Contributions",
@@ -125,7 +158,7 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
 DEFAULT_TOKAMAK_BASE_URL = "https://api.ai.tokamak.network"
 DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
 DEFAULT_TOKAMAK_TIMEOUT = 30
-MAX_AI_REPO_LIMIT = 5
+MAX_AI_REPO_LIMIT = 20
 
 REVIEWER_PERSONAS = [
     {
@@ -142,6 +175,15 @@ REVIEWER_PERSONAS = [
             "3. Assess whether the overall message and progress are clear.\n"
             "4. Note if the report feels too long, too short, or well-balanced."
         ),
+        "prompt_prefix_technical": (
+            "You are a junior developer who recently joined the team and is reading the technical report "
+            "to understand what the team has been working on.\n\n"
+            "Review the report and provide honest feedback:\n"
+            "1. Identify any internal terms, acronyms, or references you don't understand.\n"
+            "2. Assess whether the development progress is clearly communicated.\n"
+            "3. Note if commit messages and PR descriptions are understandable.\n"
+            "4. Check if the report helps a newcomer understand the project structure."
+        ),
     },
     {
         "level": 2,
@@ -155,6 +197,14 @@ REVIEWER_PERSONAS = [
             "2. Is the progress meaningful from an investment perspective?\n"
             "3. Are there missing market context or competitive insights?\n"
             "4. Does the report convey confidence and momentum?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a DevOps engineer evaluating the technical report for operational quality.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are infrastructure changes, deployments, and CI/CD updates properly documented?\n"
+            "2. Are there potential breaking changes or migration requirements mentioned?\n"
+            "3. Is the scope of each change clear enough for release planning?\n"
+            "4. Are there missing details about testing, environments, or dependencies?"
         ),
     },
     {
@@ -170,6 +220,14 @@ REVIEWER_PERSONAS = [
             "3. Are there gaps in the project timeline or missing status updates?\n"
             "4. Is the scope of work appropriately represented?"
         ),
+        "prompt_prefix_technical": (
+            "You are a technical project manager overseeing blockchain development.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are milestones, deliverables, and task completion clearly communicated?\n"
+            "2. Is there a clear mapping between commits/PRs and project goals?\n"
+            "3. Are there gaps in coverage — repositories or features not mentioned?\n"
+            "4. Is the technical progress logically organized and easy to track?"
+        ),
     },
     {
         "level": 4,
@@ -183,6 +241,14 @@ REVIEWER_PERSONAS = [
             "2. Are engineering achievements properly represented?\n"
             "3. Are there oversimplifications or missing technical context?\n"
             "4. Is the technical progression logical and well-articulated?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a senior software developer with deep blockchain and distributed systems experience.\n\n"
+            "Review the technical report and provide detailed feedback:\n"
+            "1. Is the technical content accurate and sufficiently detailed for a development audience?\n"
+            "2. Are commit descriptions precise — do they explain what changed and why?\n"
+            "3. Are there missing implementation details (e.g., algorithms, data structures, APIs)?\n"
+            "4. Is the code quality narrative clear — refactoring, bug fixes, optimizations?"
         ),
     },
     {
@@ -198,6 +264,15 @@ REVIEWER_PERSONAS = [
             "2. Is there sufficient depth on system design, security, and performance?\n"
             "3. Are there missing considerations for scalability or interoperability?\n"
             "4. Does the technical narrative align with industry best practices?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a blockchain architect and protocol researcher with expertise in ZK proofs, "
+            "rollup architectures, and DeFi systems.\n\n"
+            "Review the technical report and provide expert-level feedback:\n"
+            "1. Are architecture decisions and protocol changes well-justified with sufficient context?\n"
+            "2. Is there enough depth on system design, security implications, and performance impact?\n"
+            "3. Are cross-repository dependencies and integration points clearly documented?\n"
+            "4. Are there missing considerations for backward compatibility, migration, or breaking changes?"
         ),
     },
 ]
@@ -250,7 +325,7 @@ def get_model_timeout(model: Optional[str]) -> int:
     if lowered.startswith("deepseek"):
         return max(10, min(base, 25))
     if lowered.startswith("gpt-5"):
-        return max(15, min(base, 35))
+        return 60
     return base
 
 
@@ -259,7 +334,7 @@ def get_model_temperature(model: Optional[str]) -> float:
         return 0.5
     lowered = model.lower()
     if lowered.startswith("gpt-5.2"):
-        return 0.4
+        return 1.0
     if lowered.startswith("gemini"):
         return 0.7
     if lowered.startswith("deepseek"):
@@ -357,20 +432,19 @@ def sanitize_repo_technical_section(section: str) -> str:
     bullets = []
     for line in lines:
         stripped = line.strip()
-        if not stripped or not stripped.startswith("*"):
+        if not stripped:
             continue
         lowered = stripped.lower()
+        # Skip meta-commentary lines
         if "tokamak network technical report" in lowered:
             continue
-        if "summary:" in lowered or "total:" in lowered:
+        if lowered.startswith("summary:") or lowered.startswith("total:"):
             continue
-        if "development activities" in lowered:
+        if "development activities" in lowered and not stripped.startswith("*"):
             continue
-        if stripped.startswith("**") or stripped.startswith("* **"):
-            continue
-        if not re.search(r"\[commit\]\(|\bpr#\d+|sha:\s*[0-9a-f]{4,}", lowered, flags=re.IGNORECASE):
-            continue
-        bullets.append(stripped)
+        # Keep bullet points (with or without commit references)
+        if stripped.startswith("*") or stripped.startswith("-"):
+            bullets.append(stripped)
     return "\n".join(bullets).strip()
 
 
@@ -417,14 +491,17 @@ def has_tokamak_client(model: Optional[str] = None) -> bool:
     return bool(selected)
 
 
-def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
+def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = None, timeout_override: Optional[int] = None, errors: Optional[List[str]] = None) -> Optional[str]:
     if not has_tokamak_client(model) or OpenAI is None:
+        if errors is not None:
+            errors.append("Tokamak client not available (missing API key or openai package)")
         return None
     selected_model = model or get_tokamak_model()
-    timeout = get_model_timeout(selected_model)
+    timeout = timeout_override or get_model_timeout(selected_model)
     client = OpenAI(base_url=get_tokamak_base_url(), api_key=get_tokamak_api_key(), timeout=timeout)
-    try:
-        if selected_model.startswith("gpt-5.2"):
+    # Try responses API for gpt-5.2 first, fall back to chat completions
+    if selected_model.startswith("gpt-5.2"):
+        try:
             responses = getattr(client, "responses", None)
             if responses is not None:
                 response = responses.create(
@@ -437,6 +514,12 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
                 text = getattr(response, "output_text", "")
                 if text:
                     return text.strip()
+        except Exception as exc:
+            print(f"Tokamak responses API failed for {selected_model}, trying chat completions: {exc}")
+            if errors is not None:
+                errors.append(f"Tokamak responses API ({selected_model}): {exc}")
+
+    try:
         temperature = get_model_temperature(selected_model)
         response = client.chat.completions.create(
             model=selected_model,
@@ -448,12 +531,16 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
         content = response.choices[0].message.content if response.choices else None
         return content.strip() if content else None
     except Exception as exc:
-        print(f"Tokamak request failed for model {selected_model}: {exc}")
+        print(f"Tokamak chat completions failed for model {selected_model}: {exc}")
+        if errors is not None:
+            errors.append(f"Tokamak chat completions ({selected_model}): {exc}")
         return None
 
 
-def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
+def generate_with_anthropic(prompt: str, max_tokens: int, errors: Optional[List[str]] = None) -> Optional[str]:
     if not HAS_ANTHROPIC or not os.environ.get('ANTHROPIC_API_KEY') or anthropic is None:
+        if errors is not None:
+            errors.append("Anthropic client not available (missing API key or anthropic package)")
         return None
     client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
     try:
@@ -464,15 +551,17 @@ def generate_with_anthropic(prompt: str, max_tokens: int) -> Optional[str]:
         )
         text = getattr(response.content[0], "text", "").strip()
         return text or None
-    except Exception:
+    except Exception as exc:
+        if errors is not None:
+            errors.append(f"Anthropic API: {exc}")
         return None
 
 
-def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None) -> Optional[str]:
-    tokamak_response = generate_with_tokamak(prompt, max_tokens, model)
+def generate_with_llm(prompt: str, max_tokens: int, model: Optional[str] = None, timeout_override: Optional[int] = None, errors: Optional[List[str]] = None) -> Optional[str]:
+    tokamak_response = generate_with_tokamak(prompt, max_tokens, model, timeout_override, errors)
     if tokamak_response:
         return tokamak_response
-    anthropic_response = generate_with_anthropic(prompt, max_tokens)
+    anthropic_response = generate_with_anthropic(prompt, max_tokens, errors)
     if anthropic_response:
         return anthropic_response
     return None
@@ -1803,12 +1892,13 @@ def generate_public_section(
     summary: dict,
     use_ai: bool = True,
     model: Optional[str] = None,
+    report_format: str = "concise",
 ) -> str:
     """Generate public report section."""
     info = SECTION_INFO_PUBLIC[project]
 
     if use_ai and has_tokamak_client(model):
-        section = generate_with_ai_public(project, summary, info, model=model)
+        section = generate_with_ai_public(project, summary, info, model=model, report_format=report_format)
     else:
         section = generate_basic_public(project, summary, info)
 
@@ -1845,6 +1935,7 @@ def generate_repo_public_section(
     summary: dict,
     use_ai: bool = True,
     model: Optional[str] = None,
+    report_format: str = "concise",
 ) -> str:
     if repo_name == "Other repos":
         remaining = len(summary.get("repos", []))
@@ -1853,15 +1944,17 @@ def generate_repo_public_section(
             "focusing on continuous maintenance, documentation, and automated testing to ensure a robust ecosystem.\n"
         )
 
+    repo_desc = REPO_DESCRIPTIONS.get(repo_name, f"Development work on {repo_name}")
     info = {
         "number": "",
         "title": repo_name,
-        "context": f"Repository activity summary for {repo_name}.",
+        "context": repo_desc,
         "overview_url": f"https://github.com/tokamak-network/{repo_name}",
         "business_focus": summary.get("business_focus", "Ecosystem development"),
     }
+    print(f"[REPO PUBLIC] repo={repo_name}, use_ai={use_ai}, model={model}, format={report_format}, has_client={has_tokamak_client(model)}")
     if use_ai and has_tokamak_client(model):
-        section = generate_with_ai_public(repo_name, summary, info, model=model)
+        section = generate_with_ai_public(repo_name, summary, info, model=model, report_format=report_format)
     else:
         section = generate_basic_public(repo_name, summary, info)
     if section:
@@ -1888,9 +1981,9 @@ def generate_with_ai_technical(project: str, summary: dict, info: dict, model: O
 You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
 
 [Team & Project Context]
-- 2.2 (Ooo): Zero-Knowledge Proof-Based Private App Channels.
-- 2.3 (Eco): Decentralized Staking and Governance.
-- 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
+- Zero-Knowledge Proof-Based Private App Channels (Privacy technology).
+- Decentralized Staking and Governance (Token economy).
+- Tokamak Rollup Hub — One-Click Layer 2 Deployment (Infrastructure).
 
 [Constraints]
 0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
@@ -1923,7 +2016,32 @@ Merged PRs:
     return f"{bullets}\n"
 
 
-def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
+def _format_instructions_concise() -> str:
+    """Format A (Concise): One-liner intro + bold-titled bullet points."""
+    return """[Output Format: Concise (Format A)]
+1. Start with exactly ONE sentence explaining what this project/repository does and why it matters to users.
+2. Then list exactly 5 bullet points of key accomplishments from this period.
+3. Each bullet MUST follow this pattern:
+   * **Bold Action Phrase**: Followed by a plain-language explanation of the user-facing benefit.
+   - Example: "* **Integrated Fast Withdrawal Capabilities**: Merged new withdrawal logic, significantly reducing the waiting time for users looking to unstake their assets."
+4. Do NOT include any section headers like "Key Accomplishments" or project title headers.
+5. Do NOT include a closing/summary paragraph."""
+
+
+def _format_instructions_structured() -> str:
+    """Format B (Structured): Title + intro paragraph + Key Accomplishments header + bullets."""
+    return """[Output Format: Structured (Format B)]
+1. Start with a title line: "[Project/Repository Name] Progress Update" or "[Project/Repository Name]: [Subtitle describing theme]"
+2. Then write a 2-3 sentence overview paragraph explaining what this project does, why it matters, and what the focus of this period was.
+3. Then add a "Key Accomplishments" or "Key Accomplishments:" header on its own line.
+4. Then list exactly 5 bullet points of key accomplishments from this period.
+5. Each bullet MUST follow this pattern:
+   * **Bold Action Phrase**: Followed by a plain-language explanation of the user-facing benefit.
+   - Example: "* **Integrated Fast Withdrawal Capabilities**: Merged new withdrawal logic, significantly reducing the waiting time for users looking to unstake their assets."
+6. Do NOT include a closing/summary paragraph."""
+
+
+def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None, report_format: str = "concise") -> str:
     """Generate public section using Tokamak API."""
     if not has_tokamak_client(model):
         return generate_basic_public(project, summary, info)
@@ -1933,43 +2051,65 @@ def generate_with_ai_public(project: str, summary: dict, info: dict, model: Opti
         for c in summary['top_commits'][:12]
     ])
 
+    pr_list = "\n".join([
+        f"- [{p['repo']}] PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), False)}"
+        for p in summary.get('merged_pr_list', [])[:6]
+    ])
+
+    # Build repo descriptions for context
+    repo_desc_lines = []
+    seen_repos = set()
+    for c in summary.get('top_commits', [])[:20]:
+        repo = c.get('repo', '')
+        if repo and repo not in seen_repos:
+            seen_repos.add(repo)
+            desc = REPO_DESCRIPTIONS.get(repo, '')
+            if desc:
+                repo_desc_lines.append(f"- {repo}: {desc}")
+    repo_descriptions = "\n".join(repo_desc_lines) if repo_desc_lines else "N/A"
+
+    format_instructions = _format_instructions_structured() if report_format == "structured" else _format_instructions_concise()
+
     prompt = f"""[Role]
-You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
+You are writing a public progress update for Tokamak Network, targeting investors, community members, and general readers who want to understand what was accomplished and why it matters.
 
-[Team & Project Context]
-- 2.2 (Ooo): Private Transactions & Secure Channels.
-- 2.3 (Eco): Staking Rewards & Community Governance.
-- 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
+[About This Repository/Project]
+{info['title']}: {info.get('context', '')}
+Business Focus: {info.get('business_focus', 'Ecosystem development')}
 
-[Constraints]
-0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
-1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
-2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
-3. Grouping: Use engaging titles:
-   - "Private & Secure Transactions (Ooo)"
-   - "Staking & Economic Security (Eco)"
-   - "Scalable Infrastructure (TRH)"
-4. Jargon Filter: Translate all technical terms into "User Impact" language.
-   - Example: Instead of "NFT-based registry", use "Secured ownership through digital asset architecture."
-   - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
-5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
-6. Contributors: Focus on how each person's work improved the overall project mission.
-7. {model_style_hint(model, "public")}
+[Repository Descriptions]
+{repo_descriptions}
 
-[Data Input]
-Project: {info['title']}
+{format_instructions}
+
+[Writing Rules]
+1. Each bullet should:
+   - Start with a strong action verb (Launched, Enhanced, Strengthened, Delivered, Integrated, Implemented, etc.)
+   - Explain the user-facing benefit, not just the technical change
+   - Translate technical jargon into plain language
+   - Example: Instead of "refactored staking contract logic", write "Improved staking reliability so users experience fewer transaction failures"
+2. Do NOT include: commit hashes, file paths, PR numbers, meta commentary, or internal project codenames (Ooo, Eco, TRH).
+3. Output in English only.
+4. {model_style_hint(model, "public")}
+
+[Activity Data]
 Date Range: {summary.get('start_date', 'N/A')} to {summary.get('end_date', 'N/A')}
-Context: {info['context']}
-Business Focus: {info['business_focus']}
-Total improvements: {summary['total_commits']}
+Total commits: {summary['total_commits']}
+Merged PRs: {summary.get('merged_prs', 0)}
 
-Recent commits (for context only):
+Recent commits:
 {commit_list}
+
+Merged PRs:
+{pr_list}
 """
 
+    print(f"[AI PUBLIC] Calling model={model} for project={project} format={report_format}")
     bullets = generate_with_llm(prompt, max_tokens=1000, model=model)
     if not bullets:
+        print(f"[AI PUBLIC] LLM returned None for project={project}, falling back to basic")
         return generate_basic_public(project, summary, info)
+    print(f"[AI PUBLIC] Got AI response for project={project} ({len(bullets)} chars)")
     return f"{bullets}\n"
 
 
@@ -1992,7 +2132,14 @@ def generate_basic_public(project: str, summary: dict, info: dict) -> str:
     """Generate basic public section without AI."""
     commits = summary['top_commits']
     merged_prs = summary.get('merged_pr_list', [])
-    intro = sentence_case(info['context'].rstrip('.'))
+
+    # Use repo description as intro if available
+    repo_desc = REPO_DESCRIPTIONS.get(project, "")
+    if repo_desc:
+        intro = repo_desc
+    else:
+        intro = sentence_case(info['context'].rstrip('.'))
+
     deliverables = extract_public_pr_deliverables(merged_prs, 4)
     if len(deliverables) < 3:
         deliverables.extend(extract_public_commit_deliverables(commits, 4 - len(deliverables)))
@@ -2165,20 +2312,24 @@ def generate_highlight_with_ai(
             if date_range and date_range.get("start") and date_range.get("end"):
                 date_label = f"{date_range['start']} to {date_range['end']}"
             prompt = f"""[Role]
-You are a Visionary Tech Evangelist. Your task is to generate a concise highlight for Tokamak Network.
+You are writing the opening highlight paragraph for Tokamak Network's bi-weekly progress report. Your audience includes investors, TON token holders, community members, and general readers.
 
-[Tone]
-Inspiring, accessible, and benefit-oriented. Focus on "Why it matters" and "User Impact."
+[About Tokamak Network]
+Tokamak Network is building Ethereum Layer 2 infrastructure with three core initiatives:
+- Privacy: Zero-knowledge proof technology for private transactions
+- Staking & Governance: TON token staking rewards and decentralized governance
+- Rollup Hub: One-click Layer 2 deployment platform for developers
+IMPORTANT: Do NOT use internal project codenames like "Ooo", "Eco", or "TRH" in the output.
 
-[Constraints]
-0. Output only the highlight text. Do not include analysis, reasoning, or meta commentary.
-1. Highlight must be exactly 3 sentences.
-2. Do not include section headers, bullet points, or grouping labels.
-3. Use bold numbers for total development activity.
-4. Output in English only.
-5. Avoid listing repository names; keep it outcome-focused.
+[Instructions]
+1. Write exactly 3 sentences that serve as an executive summary.
+2. Sentence 1: State what Tokamak Network accomplished this period in a way that excites investors and community.
+3. Sentence 2: Connect the technical work to real user/business benefits (e.g., "users can now...", "this means faster...", "developers will be able to...").
+4. Sentence 3: Include bold activity numbers — **{total_commits}** commits, **{total_prs}** merged PRs across **{total_repos}** repositories.
+5. Do NOT use bullet points, headers, or meta commentary. Output only the 3 sentences.
+6. Output in English only.
 
-[Data]
+[Activity Data]
 Date Range: {date_label}
 Total commits: {total_commits}
 Merged PRs: {total_prs}
@@ -2290,6 +2441,7 @@ async def generate_report(
     include_individuals: bool = Form(True),
     report_grouping: str = Form("project"),
     repo_limit: int = Form(0),
+    report_format: str = Form("concise"),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -2423,9 +2575,8 @@ async def generate_report(
         sections = []
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
         section_use_ai = use_ai
-        if report_type == "technical" and selected_model:
-            if selected_model.lower().startswith("gemini-3-flash"):
-                section_use_ai = False
+        # Note: Gemini Flash model restriction for technical reports removed
+        # to ensure consistent AI generation across all report types
         highlight_use_ai = use_ai
 
         if report_grouping == "repository":
@@ -2433,24 +2584,26 @@ async def generate_report(
             if "Other repos" in summaries:
                 entries = [(name, summary) for name, summary in entries if name != "Other repos"]
                 entries.append(("Other repos", summaries["Other repos"]))
-            for repo_name, summary in entries:
-                summary = trim_summary_for_ai(summary, 12, 6) if use_ai else summary
+
+            # Parallel generation for repository sections
+            def _gen_repo_section(repo_name_and_summary):
+                rn, sm = repo_name_and_summary
+                sm = trim_summary_for_ai(sm, 12, 6) if use_ai else sm
                 if report_type == "technical":
-                    section = generate_repo_technical_section(repo_name, summary, section_use_ai, model=selected_model)
+                    content = generate_repo_technical_section(rn, sm, section_use_ai, model=selected_model)
                 else:
-                    section = generate_repo_public_section(repo_name, summary, section_use_ai, model=selected_model)
-                sections.append({
-                    "project": repo_name,
-                    "title": repo_name,
-                    "content": section,
-                })
+                    content = generate_repo_public_section(rn, sm, section_use_ai, model=selected_model, report_format=report_format)
+                return {"project": rn, "title": rn, "content": content}
+
+            with ThreadPoolExecutor(max_workers=min(5, len(entries))) as executor:
+                sections = list(executor.map(_gen_repo_section, entries))
         else:
             for project in project_keys:
                 if project in summaries:
                     if report_type == "technical":
                         section = generate_technical_section(project, summaries[project], section_use_ai, model=selected_model)
                     else:
-                        section = generate_public_section(project, summaries[project], section_use_ai, model=selected_model)
+                        section = generate_public_section(project, summaries[project], section_use_ai, model=selected_model, report_format=report_format)
                     sections.append({
                         "project": project,
                         "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
@@ -2510,12 +2663,9 @@ async def generate_report(
                     for repo_name, summary in entries:
                         summary = trim_summary_for_ai(summary, 12, 6)
                         if report_type == "technical":
-                            candidate_use_ai = True
-                            if candidate and candidate.lower().startswith("gemini-3-flash"):
-                                candidate_use_ai = False
-                            section = generate_repo_technical_section(repo_name, summary, candidate_use_ai, model=candidate)
+                            section = generate_repo_technical_section(repo_name, summary, True, model=candidate)
                         else:
-                            section = generate_repo_public_section(repo_name, summary, True, model=candidate)
+                            section = generate_repo_public_section(repo_name, summary, True, model=candidate, report_format=report_format)
                         candidate_sections.append({
                             "project": repo_name,
                             "title": repo_name,
@@ -2527,7 +2677,7 @@ async def generate_report(
                             if report_type == "technical":
                                 section = generate_technical_section(project, summaries[project], use_ai, model=candidate)
                             else:
-                                section = generate_public_section(project, summaries[project], use_ai, model=candidate)
+                                section = generate_public_section(project, summaries[project], use_ai, model=candidate, report_format=report_format)
                             candidate_sections.append({
                                 "project": project,
                                 "title": f"{section_info[project]['number']}. {section_info[project]['title']}",
@@ -2584,6 +2734,7 @@ async def generate_report(
         return JSONResponse({
             "success": True,
             "report_type": report_type,
+            "report_format": report_format,
             "report_scope": scope,
             "report_grouping": report_grouping,
             "model": selected_model,
@@ -2647,10 +2798,9 @@ async def review_report(
     report_type: str = Form("public"),
     reviewer_level: int = Form(3),
     model: Optional[str] = Form(None),
+    report_format: str = Form("concise"),
 ):
     """Review a generated report using a virtual reviewer persona."""
-    import json as _json
-
     refresh_env()
 
     persona = None
@@ -2664,62 +2814,170 @@ async def review_report(
 
     selected_model = model or get_tokamak_model()
 
+    try:
+        return await _do_review(report_text, report_type, reviewer_level, selected_model, persona, report_format)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Review endpoint error: {exc}")
+        return JSONResponse({
+            "success": False,
+            "error": f"Review error: {str(exc)[:500]}",
+            "reviewer": persona["name"],
+            "reviewer_ko": persona["name_ko"],
+            "reviewer_level": reviewer_level,
+        })
+
+
+async def _do_review(report_text: str, report_type: str, reviewer_level: int, selected_model: str, persona: dict, report_format: str):
+    import json as _json
+
     report_type_label = (
         "Public/Investor-facing report" if report_type == "public"
         else "Technical development report"
     )
 
-    prompt = f"""{persona["prompt_prefix"]}
+    # Select appropriate prompt prefix based on report type
+    if report_type == "technical" and "prompt_prefix_technical" in persona:
+        active_prompt_prefix = persona["prompt_prefix_technical"]
+    else:
+        active_prompt_prefix = persona["prompt_prefix"]
+
+    format_context = ""
+    if report_type == "public":
+        if report_format == "structured":
+            format_context = (
+                "\n[Report Format]\n"
+                "This report uses Format B (Structured): Each section should have a title, "
+                "an introductory paragraph explaining the project, a 'Key Accomplishments' header, "
+                "and 5 bullet points with **bold action phrases** followed by explanations.\n"
+                "When reviewing, also evaluate whether the structure is consistent across sections "
+                "(e.g., all sections have titles, intro paragraphs, and the Key Accomplishments header).\n"
+            )
+        else:
+            format_context = (
+                "\n[Report Format]\n"
+                "This report uses Format A (Concise): Each section should have a one-sentence project overview "
+                "followed by 5 bullet points with **bold action phrases** followed by explanations. "
+                "No section headers like 'Key Accomplishments' or project title headers.\n"
+                "When reviewing, also evaluate whether the format is compact and scannable, "
+                "and whether the one-liner intros are informative enough without being too verbose.\n"
+            )
+    else:
+        format_context = (
+            "\n[Report Format]\n"
+            "This is a Technical Development Report. Each section has a ### header, "
+            "a one-sentence technical summary, and 2-5 bullet points in the format: "
+            "[Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL)).\n"
+            "When reviewing, evaluate whether technical details are accurate, commit references are meaningful, "
+            "and the engineering narrative is clear and comprehensive.\n"
+        )
+
+    prompt = f"""{active_prompt_prefix}
 
 [Report Type]
 {report_type_label}
-
+{format_context}
 [Report to Review]
 {report_text}
 
 [Output Format]
-Provide your review as JSON:
+Provide your review as JSON. For each issue, include the EXACT original text and your proposed revision so the author can see specific suggested changes (like Google Docs "Suggest edits" mode):
 {{
   "issues": [
     {{
       "category": "clarity|accuracy|depth|structure|tone",
-      "description": "What the issue is",
+      "description": "What the issue is and why it matters",
       "suggestion": "How to fix it",
-      "severity": "low|medium|high"
+      "severity": "low|medium|high",
+      "original_text": "The exact sentence or phrase from the report that should be changed",
+      "revised_text": "Your improved version of that sentence or phrase"
     }}
   ],
   "strengths": ["What the report does well"],
   "overall_score": <1-10>,
-  "summary": "2-3 sentence overall assessment"
+  "summary": "2-3 sentence overall assessment with actionable next steps"
 }}
 
-Output ONLY the JSON. No additional text or markdown fences."""
+IMPORTANT:
+- For each issue, you MUST include original_text (copied from the report) and revised_text (your improved version).
+- Be specific and constructive. Show exactly what to change, not just what's wrong.
+- Output ONLY the JSON. No additional text or markdown fences."""
 
-    response = generate_with_llm(prompt, max_tokens=1500, model=selected_model)
+    review_timeout = max(get_model_timeout(selected_model) * 2, 120)
+    llm_errors: List[str] = []
+    response = generate_with_llm(prompt, max_tokens=3000, model=selected_model, timeout_override=review_timeout, errors=llm_errors)
 
     if not response:
+        error_detail = "; ".join(llm_errors) if llm_errors else "All AI providers failed"
         return JSONResponse({
             "success": False,
-            "error": "Failed to generate review. Check AI model availability.",
+            "error": f"Failed to generate review: {error_detail}",
             "reviewer": persona["name"],
             "reviewer_ko": persona["name_ko"],
             "reviewer_level": reviewer_level,
         })
 
     cleaned = response.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
+    # Remove markdown code fences (```json ... ``` or ``` ... ```)
+    if "```" in cleaned:
+        cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned)
+        cleaned = cleaned.strip()
 
+    # Try to extract JSON from mixed content (e.g., LLM adds text before/after JSON)
+    review_data = None
     try:
         review_data = _json.loads(cleaned)
     except (_json.JSONDecodeError, ValueError):
+        pass
+
+    if review_data is None:
+        # Try to find a balanced JSON object containing "issues"
+        brace_start = cleaned.find("{")
+        if brace_start != -1:
+            depth = 0
+            end_idx = -1
+            for i in range(brace_start, len(cleaned)):
+                if cleaned[i] == "{":
+                    depth += 1
+                elif cleaned[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i
+                        break
+            if end_idx != -1:
+                candidate = cleaned[brace_start : end_idx + 1]
+                try:
+                    review_data = _json.loads(candidate)
+                except (_json.JSONDecodeError, ValueError):
+                    pass
+
+    if review_data is None:
+        # Last resort: try regex for any JSON-like block
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', cleaned)
+        if json_match:
+            try:
+                review_data = _json.loads(json_match.group())
+            except (_json.JSONDecodeError, ValueError):
+                pass
+
+    if review_data is None:
         review_data = {
             "issues": [],
             "strengths": [],
             "overall_score": 5,
-            "summary": cleaned,
+            "summary": cleaned[:2000] if len(cleaned) > 2000 else cleaned,
         }
+
+    # Ensure required fields exist with correct types
+    if not isinstance(review_data.get("issues"), list):
+        review_data["issues"] = []
+    if not isinstance(review_data.get("strengths"), list):
+        review_data["strengths"] = []
+    if not isinstance(review_data.get("overall_score"), (int, float)):
+        review_data["overall_score"] = 5
+    if not isinstance(review_data.get("summary"), str):
+        review_data["summary"] = "Review completed."
 
     return JSONResponse({
         "success": True,
@@ -2737,6 +2995,7 @@ async def improve_report(
     report_type: str = Form("public"),
     reviews_json: str = Form("[]"),
     model: Optional[str] = Form(None),
+    report_format: str = Form("concise"),
 ):
     """Improve a report based on reviewer feedback."""
     import json as _json
@@ -2783,6 +3042,29 @@ async def improve_report(
             "Include specific technical details, architecture decisions, and implementation specifics."
         )
 
+    format_instruction = ""
+    if report_type == "public":
+        if report_format == "structured":
+            format_instruction = (
+                "8. Preserve Format B (Structured) across all sections: each section must have "
+                "a title, introductory paragraph, 'Key Accomplishments' header, and 5 bullet points "
+                "with **bold action phrases**. Ensure all sections follow this structure consistently."
+            )
+        else:
+            format_instruction = (
+                "8. Preserve Format A (Concise) across all sections: each section must have "
+                "a one-sentence project overview followed by 5 bullet points with **bold action phrases**. "
+                "No extra headers or title lines. Keep it compact and scannable."
+            )
+    else:
+        format_instruction = (
+            "8. Preserve the technical report format: each section must have a ### header, "
+            "a one-sentence technical summary, and 2-5 bullet points in the format: "
+            "[Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL)). "
+            "Preserve all commit links, SHA references, and PR numbers. "
+            "Do NOT remove technical details, function names, or repository paths."
+        )
+
     prompt = f"""[Role]
 You are a senior technical writer at a blockchain company. Your task is to improve a report based on reviewer feedback.
 
@@ -2794,6 +3076,7 @@ You are a senior technical writer at a blockchain company. Your task is to impro
 5. Keep the same overall structure (headers, sections).
 6. Improve clarity, flow, and readability.
 7. Output ONLY the improved report in markdown. No meta-commentary.
+{format_instruction}
 
 [Original Report]
 {report_text}
