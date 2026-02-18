@@ -392,7 +392,9 @@ export default function Home() {
             data.headline ? `#### ${data.headline}\n\n` : '',
             `### Highlight\n\n${data.highlight}\n`,
             `### Development Activity\n`,
-            data.sections?.map((s: { content: string }) => s.content).join('\n') ?? '',
+            data.sections?.map((s: { title?: string; content: string }) =>
+              `${s.title ? `#### ${s.title}\n` : ''}${s.content}`
+            ).join('\n') ?? '',
           ].join('\n')
 
       setHighlight(data.highlight || '')
