@@ -726,22 +726,29 @@ export default function Home() {
   const handleReReviewImproved = async () => {
     if (!improvedReport) return
     setReReviewing(true)
-    const newPostScores: Record<number, number> = {}
 
     try {
-      for (const level of Object.keys(preScores).map(Number)) {
-        const formData = new FormData()
-        formData.append('report_text', improvedReport)
-        formData.append('report_type', reportType)
-        formData.append('report_format', reportFormat)
-        formData.append('reviewer_level', level.toString())
-        formData.append('model', selectedModel)
+      const levels = Object.keys(preScores).map(Number)
+      const results = await Promise.allSettled(
+        levels.map(async (level) => {
+          const formData = new FormData()
+          formData.append('report_text', improvedReport)
+          formData.append('report_type', reportType)
+          formData.append('report_format', reportFormat)
+          formData.append('reviewer_level', level.toString())
+          formData.append('model', selectedModel)
 
-        const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
-        if (!response.ok) continue
-        const data = await response.json()
-        if (data.success) {
-          newPostScores[level] = data.review.overall_score
+          const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
+          if (!response.ok) return { level, score: null }
+          const data = await response.json()
+          return { level, score: data.success ? data.review.overall_score : null }
+        })
+      )
+
+      const newPostScores: Record<number, number> = {}
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.score !== null) {
+          newPostScores[result.value.level] = result.value.score
         }
       }
       setPostScores(newPostScores)
