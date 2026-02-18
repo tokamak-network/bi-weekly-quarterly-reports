@@ -304,6 +304,7 @@ export default function Home() {
   const [highlightedText, setHighlightedText] = useState<string | null>(null)
   const [appliedIssues, setAppliedIssues] = useState<Set<string>>(new Set())
   const [appliedChanges, setAppliedChanges] = useState<AppliedChange[]>([])
+  const [excludedIssues, setExcludedIssues] = useState<Set<string>>(new Set())
   const [selectedReviewers, setSelectedReviewers] = useState<Set<number>>(new Set())
   const [preScores, setPreScores] = useState<Record<number, number>>({})
   const [postScores, setPostScores] = useState<Record<number, number>>({})
@@ -659,7 +660,7 @@ export default function Home() {
   }
 
   const handleImprove = async () => {
-    // Filter selected reviews and exclude already-applied issues
+    // Filter selected reviews, exclude already-applied and user-excluded issues
     const activeReviews = reviews
       .filter((r) => selectedReviewers.has(r.reviewer_level))
       .map((r) => ({
@@ -669,7 +670,7 @@ export default function Home() {
           issues: r.review.issues.filter((issue) => {
             if (!issue.original_text || !issue.revised_text) return true
             const issueKey = `${issue.original_text}::${issue.revised_text}`
-            return !appliedIssues.has(issueKey)
+            return !appliedIssues.has(issueKey) && !excludedIssues.has(issueKey)
           })
         }
       }))
@@ -1599,14 +1600,43 @@ export default function Home() {
                               {/* Issues with suggested changes */}
                               {result.review.issues && result.review.issues.length > 0 && (
                                 <div>
-                                  <div className="text-[10px] font-semibold uppercase text-gray-500 mb-1">
-                                    Feedback ({result.review.issues.length})
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="text-[10px] font-semibold uppercase text-gray-500">
+                                      Feedback ({result.review.issues.length})
+                                    </div>
+                                    {(() => {
+                                      const toggleableKeys = result.review.issues
+                                        .filter((iss) => iss.original_text && iss.revised_text && !appliedIssues.has(`${iss.original_text}::${iss.revised_text}`))
+                                        .map((iss) => `${iss.original_text}::${iss.revised_text}`)
+                                      if (toggleableKeys.length === 0) return null
+                                      const allIncluded = toggleableKeys.every((k) => !excludedIssues.has(k))
+                                      return (
+                                        <button
+                                          onClick={() => {
+                                            setExcludedIssues((prev) => {
+                                              const next = new Set(prev)
+                                              if (allIncluded) {
+                                                toggleableKeys.forEach((k) => next.add(k))
+                                              } else {
+                                                toggleableKeys.forEach((k) => next.delete(k))
+                                              }
+                                              return next
+                                            })
+                                          }}
+                                          className="text-[9px] text-blue-500 hover:text-blue-700 transition"
+                                        >
+                                          {allIncluded ? 'Deselect all' : 'Select all'}
+                                        </button>
+                                      )
+                                    })()}
                                   </div>
                                   <div className="space-y-2">
                                     {result.review.issues.map((issue, i) => {
                                       const issueKey = `${issue.original_text}::${issue.revised_text}`
                                       const isApplied = appliedIssues.has(issueKey)
                                       const isHighlighted = highlightedText === issue.original_text
+                                      const isExcluded = excludedIssues.has(issueKey)
+                                      const hasTextChange = !!(issue.original_text && issue.revised_text)
 
                                       return (
                                         <div
@@ -1616,17 +1646,40 @@ export default function Home() {
                                               ? 'border-yellow-400 bg-yellow-50 ring-1 ring-yellow-300'
                                               : isApplied
                                               ? 'border-emerald-200 bg-emerald-50/50'
+                                              : isExcluded
+                                              ? 'border-gray-100 bg-gray-50/50 opacity-60'
                                               : 'border-gray-100 hover:border-gray-200'
                                           }`}
                                           onClick={() => handleHighlightIssue(issue.original_text)}
                                         >
                                           <div className="flex items-center gap-2 mb-1">
+                                            {hasTextChange && !isApplied && (
+                                              <input
+                                                type="checkbox"
+                                                checked={!isExcluded}
+                                                onChange={(e) => {
+                                                  e.stopPropagation()
+                                                  setExcludedIssues((prev) => {
+                                                    const next = new Set(prev)
+                                                    if (next.has(issueKey)) next.delete(issueKey)
+                                                    else next.add(issueKey)
+                                                    return next
+                                                  })
+                                                }}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="h-3 w-3 rounded border-gray-300 text-blue-600 cursor-pointer shrink-0"
+                                                title={isExcluded ? 'Include in AI Improvement' : 'Exclude from AI Improvement'}
+                                              />
+                                            )}
                                             <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase ${severityBadge(issue.severity)}`}>
                                               {issue.severity}
                                             </span>
                                             <span className="text-[10px] text-gray-400">{issue.category}</span>
                                             {isApplied && (
                                               <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-700">Applied</span>
+                                            )}
+                                            {isExcluded && !isApplied && (
+                                              <span className="ml-auto rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold text-gray-500">Excluded</span>
                                             )}
                                           </div>
                                           <p className="text-[11px] text-gray-700 leading-4">{issue.description}</p>
@@ -1755,28 +1808,35 @@ export default function Home() {
                 </div>
               )}
 
-              <button
-                onClick={handleImprove}
-                disabled={
-                  selectedReviewers.size === 0 ||
-                  improving ||
-                  !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0)
-                }
-                className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {improving ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Improving...
-                  </span>
-                ) : selectedReviewers.size === 0 ? (
-                  'Select reviewers to apply'
-                ) : !reviews.some((r) => selectedReviewers.has(r.reviewer_level) && r.review.issues && r.review.issues.length > 0) ? (
-                  'No actionable feedback to apply'
-                ) : (
-                  `Improve with ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
-                )}
-              </button>
+              {(() => {
+                const activeIssueCount = reviews
+                  .filter((r) => selectedReviewers.has(r.reviewer_level))
+                  .reduce((sum, r) => sum + (r.review.issues ?? []).filter((iss) => {
+                    if (!iss.original_text || !iss.revised_text) return true
+                    const k = `${iss.original_text}::${iss.revised_text}`
+                    return !appliedIssues.has(k) && !excludedIssues.has(k)
+                  }).length, 0)
+                return (
+                  <button
+                    onClick={handleImprove}
+                    disabled={selectedReviewers.size === 0 || improving || activeIssueCount === 0}
+                    className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {improving ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Improving...
+                      </span>
+                    ) : selectedReviewers.size === 0 ? (
+                      'Select reviewers to apply'
+                    ) : activeIssueCount === 0 ? (
+                      'No actionable feedback to apply'
+                    ) : (
+                      `Improve with ${activeIssueCount} issue${activeIssueCount > 1 ? 's' : ''} from ${selectedReviewers.size} reviewer${selectedReviewers.size > 1 ? 's' : ''}`
+                    )}
+                  </button>
+                )
+              })()}
 
               {improveError && (
                 <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
