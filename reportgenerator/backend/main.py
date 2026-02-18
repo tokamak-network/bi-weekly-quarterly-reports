@@ -449,8 +449,9 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
     selected_model = model or get_tokamak_model()
     timeout = get_model_timeout(selected_model)
     client = OpenAI(base_url=get_tokamak_base_url(), api_key=get_tokamak_api_key(), timeout=timeout)
-    try:
-        if selected_model.startswith("gpt-5.2"):
+    # Try responses API for gpt-5.2 first, fall back to chat completions
+    if selected_model.startswith("gpt-5.2"):
+        try:
             responses = getattr(client, "responses", None)
             if responses is not None:
                 response = responses.create(
@@ -463,6 +464,10 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
                 text = getattr(response, "output_text", "")
                 if text:
                     return text.strip()
+        except Exception as exc:
+            print(f"Tokamak responses API failed for {selected_model}, trying chat completions: {exc}")
+
+    try:
         temperature = get_model_temperature(selected_model)
         response = client.chat.completions.create(
             model=selected_model,
@@ -474,7 +479,7 @@ def generate_with_tokamak(prompt: str, max_tokens: int, model: Optional[str] = N
         content = response.choices[0].message.content if response.choices else None
         return content.strip() if content else None
     except Exception as exc:
-        print(f"Tokamak request failed for model {selected_model}: {exc}")
+        print(f"Tokamak chat completions failed for model {selected_model}: {exc}")
         return None
 
 
