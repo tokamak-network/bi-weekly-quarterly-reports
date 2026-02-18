@@ -13,6 +13,8 @@ from collections import defaultdict
 from typing import Optional, Tuple, List, Dict, Set, Any, TypedDict
 from datetime import datetime
 from pathlib import Path
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -139,6 +141,11 @@ REPO_DESCRIPTIONS = {
     "tokamak-rollup-hub-v2": "Next-generation Rollup Hub platform enabling one-click L2 chain deployment",
     "tokamak-thanos-stack": "Full-stack tooling and infrastructure for operating Thanos-based rollup chains",
     "tokamak-thanos-geth": "Modified Geth execution client optimized for the Tokamak Thanos rollup environment",
+    # Other ecosystem repos
+    "SentinAI": "AI-powered security sentinel for automated smart contract auditing, vulnerability detection, and verification reporting",
+    "zk-dex-d1-private-voting": "Zero-knowledge proof based decentralized voting system enabling private, verifiable on-chain governance",
+    "dust-protocol": "Privacy-focused protocol for confidential token transfers with fast withdrawal support and social login onboarding",
+    "auto-research-press": "Automated research publication platform that aggregates and publishes blockchain ecosystem analysis reports",
 }
 
 SECTION_INFO_INDIVIDUAL_PUBLIC = {
@@ -1921,9 +1928,9 @@ def generate_with_ai_technical(project: str, summary: dict, info: dict, model: O
 You are a Senior Software Architect at Tokamak Network. Your task is to generate a highly detailed Technical Development Report based on the provided activity data.
 
 [Team & Project Context]
-- 2.2 (Ooo): Zero-Knowledge Proof-Based Private App Channels.
-- 2.3 (Eco): Decentralized Staking and Governance.
-- 2.4 (TRH): Tokamak Rollup Hub (Infrastructure).
+- Zero-Knowledge Proof-Based Private App Channels (Privacy technology).
+- Decentralized Staking and Governance (Token economy).
+- Tokamak Rollup Hub — One-Click Layer 2 Deployment (Infrastructure).
 
 [Constraints]
 0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
@@ -2001,7 +2008,7 @@ Business Focus: {info.get('business_focus', 'Ecosystem development')}
    - Explain the user-facing benefit, not just the technical change
    - Translate technical jargon into plain language
    - Example: Instead of "refactored staking contract logic", write "Improved staking reliability so users experience fewer transaction failures"
-4. Do NOT include: commit hashes, file paths, PR numbers, section headers, or meta commentary.
+4. Do NOT include: commit hashes, file paths, PR numbers, section headers, meta commentary, or internal project codenames (Ooo, Eco, TRH).
 5. Output in English only.
 6. {model_style_hint(model, "public")}
 
@@ -2229,9 +2236,10 @@ You are writing the opening highlight paragraph for Tokamak Network's bi-weekly 
 
 [About Tokamak Network]
 Tokamak Network is building Ethereum Layer 2 infrastructure with three core initiatives:
-- Privacy (Ooo): Zero-knowledge proof technology for private transactions
-- Staking & Governance (Eco): TON token staking rewards and decentralized governance
-- Rollup Hub (TRH): One-click Layer 2 deployment platform for developers
+- Privacy: Zero-knowledge proof technology for private transactions
+- Staking & Governance: TON token staking rewards and decentralized governance
+- Rollup Hub: One-click Layer 2 deployment platform for developers
+IMPORTANT: Do NOT use internal project codenames like "Ooo", "Eco", or "TRH" in the output.
 
 [Instructions]
 1. Write exactly 3 sentences that serve as an executive summary.
@@ -2496,17 +2504,19 @@ async def generate_report(
             if "Other repos" in summaries:
                 entries = [(name, summary) for name, summary in entries if name != "Other repos"]
                 entries.append(("Other repos", summaries["Other repos"]))
-            for repo_name, summary in entries:
-                summary = trim_summary_for_ai(summary, 12, 6) if use_ai else summary
+
+            # Parallel generation for repository sections
+            def _gen_repo_section(repo_name_and_summary):
+                rn, sm = repo_name_and_summary
+                sm = trim_summary_for_ai(sm, 12, 6) if use_ai else sm
                 if report_type == "technical":
-                    section = generate_repo_technical_section(repo_name, summary, section_use_ai, model=selected_model)
+                    content = generate_repo_technical_section(rn, sm, section_use_ai, model=selected_model)
                 else:
-                    section = generate_repo_public_section(repo_name, summary, section_use_ai, model=selected_model)
-                sections.append({
-                    "project": repo_name,
-                    "title": repo_name,
-                    "content": section,
-                })
+                    content = generate_repo_public_section(rn, sm, section_use_ai, model=selected_model)
+                return {"project": rn, "title": rn, "content": content}
+
+            with ThreadPoolExecutor(max_workers=min(5, len(entries))) as executor:
+                sections = list(executor.map(_gen_repo_section, entries))
         else:
             for project in project_keys:
                 if project in summaries:
