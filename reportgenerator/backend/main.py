@@ -2801,8 +2801,6 @@ async def review_report(
     report_format: str = Form("concise"),
 ):
     """Review a generated report using a virtual reviewer persona."""
-    import json as _json
-
     refresh_env()
 
     persona = None
@@ -2815,6 +2813,24 @@ async def review_report(
         raise HTTPException(status_code=400, detail=f"Invalid reviewer level: {reviewer_level}")
 
     selected_model = model or get_tokamak_model()
+
+    try:
+        return await _do_review(report_text, report_type, reviewer_level, selected_model, persona, report_format)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Review endpoint error: {exc}")
+        return JSONResponse({
+            "success": False,
+            "error": f"Review error: {str(exc)[:500]}",
+            "reviewer": persona["name"],
+            "reviewer_ko": persona["name_ko"],
+            "reviewer_level": reviewer_level,
+        })
+
+
+async def _do_review(report_text: str, report_type: str, reviewer_level: int, selected_model: str, persona: dict, report_format: str):
+    import json as _json
 
     report_type_label = (
         "Public/Investor-facing report" if report_type == "public"
@@ -2903,33 +2919,65 @@ IMPORTANT:
         })
 
     cleaned = response.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-        cleaned = re.sub(r"\s*```$", "", cleaned)
+    # Remove markdown code fences (```json ... ``` or ``` ... ```)
+    if "```" in cleaned:
+        cleaned = re.sub(r"```(?:json)?\s*\n?", "", cleaned)
+        cleaned = cleaned.strip()
 
     # Try to extract JSON from mixed content (e.g., LLM adds text before/after JSON)
+    review_data = None
     try:
         review_data = _json.loads(cleaned)
     except (_json.JSONDecodeError, ValueError):
-        # Attempt to find JSON object within the response
-        json_match = re.search(r'\{[\s\S]*"issues"[\s\S]*\}', cleaned)
+        pass
+
+    if review_data is None:
+        # Try to find a balanced JSON object containing "issues"
+        brace_start = cleaned.find("{")
+        if brace_start != -1:
+            depth = 0
+            end_idx = -1
+            for i in range(brace_start, len(cleaned)):
+                if cleaned[i] == "{":
+                    depth += 1
+                elif cleaned[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i
+                        break
+            if end_idx != -1:
+                candidate = cleaned[brace_start : end_idx + 1]
+                try:
+                    review_data = _json.loads(candidate)
+                except (_json.JSONDecodeError, ValueError):
+                    pass
+
+    if review_data is None:
+        # Last resort: try regex for any JSON-like block
+        json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', cleaned)
         if json_match:
             try:
                 review_data = _json.loads(json_match.group())
             except (_json.JSONDecodeError, ValueError):
-                review_data = {
-                    "issues": [],
-                    "strengths": [],
-                    "overall_score": 5,
-                    "summary": cleaned,
-                }
-        else:
-            review_data = {
-                "issues": [],
-                "strengths": [],
-                "overall_score": 5,
-                "summary": cleaned,
-            }
+                pass
+
+    if review_data is None:
+        review_data = {
+            "issues": [],
+            "strengths": [],
+            "overall_score": 5,
+            "summary": cleaned[:2000] if len(cleaned) > 2000 else cleaned,
+        }
+
+    # Ensure required fields exist with correct types
+    if not isinstance(review_data.get("issues"), list):
+        review_data["issues"] = []
+    if not isinstance(review_data.get("strengths"), list):
+        review_data["strengths"] = []
+    if not isinstance(review_data.get("overall_score"), (int, float)):
+        review_data["overall_score"] = 5
+    if not isinstance(review_data.get("summary"), str):
+        review_data["summary"] = "Review completed."
 
     return JSONResponse({
         "success": True,

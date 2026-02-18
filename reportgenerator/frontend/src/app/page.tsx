@@ -498,8 +498,24 @@ export default function Home() {
       formData.append('reviewer_level', level.toString())
       formData.append('model', selectedModel)
 
-      const response = await fetch('http://localhost:8000/api/review', { method: 'POST', body: formData })
-      if (!response.ok) throw new Error('Review request failed')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 180000)
+
+      const response = await fetch('http://localhost:8000/api/review', {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        let errorMsg = `HTTP ${response.status}`
+        try {
+          const errData = await response.json()
+          errorMsg = errData.detail || errData.error || errorMsg
+        } catch { /* ignore parse error */ }
+        throw new Error(errorMsg)
+      }
 
       const data = await response.json()
       if (data.success) {
@@ -513,7 +529,11 @@ export default function Home() {
         setReviewError(`Review failed: ${data.error || 'Unknown error'}`)
       }
     } catch (error) {
-      setReviewError(`Review failed: ${error instanceof Error ? error.message : 'Network error'}`)
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setReviewError('Review timed out (3 min). Try again or use a faster model.')
+      } else {
+        setReviewError(`Review failed: ${error instanceof Error ? error.message : 'Network error'}`)
+      }
     } finally {
       setReviewingLevel(null)
     }
@@ -953,28 +973,10 @@ export default function Home() {
                 <div className="mt-5 h-[460px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-5">
                   {generated ? (
                     activeView === 'preview' ? (
-                      fullReport ? (
-                        <div
-                          className="whitespace-pre-wrap text-sm leading-6 text-gray-700"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(fullReport) }}
-                        />
-                      ) : (
-                        <div className="space-y-6 text-sm text-gray-700">
-                          <div>
-                            <h3 className="text-base font-semibold text-gray-900">Highlight</h3>
-                            <p className="mt-2 leading-6">{highlight || 'No highlight available.'}</p>
-                          </div>
-                          {sections.map((section, index) => (
-                            <div key={`${section.title}-${index}`}>
-                              <h3 className="text-base font-semibold text-gray-900">{section.title}</h3>
-                              <div
-                                className="mt-2 whitespace-pre-wrap leading-6 text-gray-700"
-                                dangerouslySetInnerHTML={{ __html: renderMarkdown(section.content) }}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )
+                      <div
+                        className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(fullReport ?? rawMarkdown) }}
+                      />
                     ) : (
                       <div className="h-full whitespace-pre-wrap rounded-lg bg-white p-4 font-mono text-xs text-gray-700">
                         {rawMarkdown}
