@@ -175,6 +175,15 @@ REVIEWER_PERSONAS = [
             "3. Assess whether the overall message and progress are clear.\n"
             "4. Note if the report feels too long, too short, or well-balanced."
         ),
+        "prompt_prefix_technical": (
+            "You are a junior developer who recently joined the team and is reading the technical report "
+            "to understand what the team has been working on.\n\n"
+            "Review the report and provide honest feedback:\n"
+            "1. Identify any internal terms, acronyms, or references you don't understand.\n"
+            "2. Assess whether the development progress is clearly communicated.\n"
+            "3. Note if commit messages and PR descriptions are understandable.\n"
+            "4. Check if the report helps a newcomer understand the project structure."
+        ),
     },
     {
         "level": 2,
@@ -188,6 +197,14 @@ REVIEWER_PERSONAS = [
             "2. Is the progress meaningful from an investment perspective?\n"
             "3. Are there missing market context or competitive insights?\n"
             "4. Does the report convey confidence and momentum?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a DevOps engineer evaluating the technical report for operational quality.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are infrastructure changes, deployments, and CI/CD updates properly documented?\n"
+            "2. Are there potential breaking changes or migration requirements mentioned?\n"
+            "3. Is the scope of each change clear enough for release planning?\n"
+            "4. Are there missing details about testing, environments, or dependencies?"
         ),
     },
     {
@@ -203,6 +220,14 @@ REVIEWER_PERSONAS = [
             "3. Are there gaps in the project timeline or missing status updates?\n"
             "4. Is the scope of work appropriately represented?"
         ),
+        "prompt_prefix_technical": (
+            "You are a technical project manager overseeing blockchain development.\n\n"
+            "Review the report and provide feedback:\n"
+            "1. Are milestones, deliverables, and task completion clearly communicated?\n"
+            "2. Is there a clear mapping between commits/PRs and project goals?\n"
+            "3. Are there gaps in coverage — repositories or features not mentioned?\n"
+            "4. Is the technical progress logically organized and easy to track?"
+        ),
     },
     {
         "level": 4,
@@ -216,6 +241,14 @@ REVIEWER_PERSONAS = [
             "2. Are engineering achievements properly represented?\n"
             "3. Are there oversimplifications or missing technical context?\n"
             "4. Is the technical progression logical and well-articulated?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a senior software developer with deep blockchain and distributed systems experience.\n\n"
+            "Review the technical report and provide detailed feedback:\n"
+            "1. Is the technical content accurate and sufficiently detailed for a development audience?\n"
+            "2. Are commit descriptions precise — do they explain what changed and why?\n"
+            "3. Are there missing implementation details (e.g., algorithms, data structures, APIs)?\n"
+            "4. Is the code quality narrative clear — refactoring, bug fixes, optimizations?"
         ),
     },
     {
@@ -231,6 +264,15 @@ REVIEWER_PERSONAS = [
             "2. Is there sufficient depth on system design, security, and performance?\n"
             "3. Are there missing considerations for scalability or interoperability?\n"
             "4. Does the technical narrative align with industry best practices?"
+        ),
+        "prompt_prefix_technical": (
+            "You are a blockchain architect and protocol researcher with expertise in ZK proofs, "
+            "rollup architectures, and DeFi systems.\n\n"
+            "Review the technical report and provide expert-level feedback:\n"
+            "1. Are architecture decisions and protocol changes well-justified with sufficient context?\n"
+            "2. Is there enough depth on system design, security implications, and performance impact?\n"
+            "3. Are cross-repository dependencies and integration points clearly documented?\n"
+            "4. Are there missing considerations for backward compatibility, migration, or breaking changes?"
         ),
     },
 ]
@@ -390,20 +432,19 @@ def sanitize_repo_technical_section(section: str) -> str:
     bullets = []
     for line in lines:
         stripped = line.strip()
-        if not stripped or not stripped.startswith("*"):
+        if not stripped:
             continue
         lowered = stripped.lower()
+        # Skip meta-commentary lines
         if "tokamak network technical report" in lowered:
             continue
-        if "summary:" in lowered or "total:" in lowered:
+        if lowered.startswith("summary:") or lowered.startswith("total:"):
             continue
-        if "development activities" in lowered:
+        if "development activities" in lowered and not stripped.startswith("*"):
             continue
-        if stripped.startswith("**") or stripped.startswith("* **"):
-            continue
-        if not re.search(r"\[commit\]\(|\bpr#\d+|sha:\s*[0-9a-f]{4,}", lowered, flags=re.IGNORECASE):
-            continue
-        bullets.append(stripped)
+        # Keep bullet points (with or without commit references)
+        if stripped.startswith("*") or stripped.startswith("-"):
+            bullets.append(stripped)
     return "\n".join(bullets).strip()
 
 
@@ -2524,9 +2565,8 @@ async def generate_report(
         sections = []
         section_info = SECTION_INFO_TECHNICAL if report_type == "technical" else SECTION_INFO_PUBLIC
         section_use_ai = use_ai
-        if report_type == "technical" and selected_model:
-            if selected_model.lower().startswith("gemini-3-flash"):
-                section_use_ai = False
+        # Note: Gemini Flash model restriction for technical reports removed
+        # to ensure consistent AI generation across all report types
         highlight_use_ai = use_ai
 
         if report_grouping == "repository":
@@ -2613,10 +2653,7 @@ async def generate_report(
                     for repo_name, summary in entries:
                         summary = trim_summary_for_ai(summary, 12, 6)
                         if report_type == "technical":
-                            candidate_use_ai = True
-                            if candidate and candidate.lower().startswith("gemini-3-flash"):
-                                candidate_use_ai = False
-                            section = generate_repo_technical_section(repo_name, summary, candidate_use_ai, model=candidate)
+                            section = generate_repo_technical_section(repo_name, summary, True, model=candidate)
                         else:
                             section = generate_repo_public_section(repo_name, summary, True, model=candidate, report_format=report_format)
                         candidate_sections.append({
@@ -2774,6 +2811,12 @@ async def review_report(
         else "Technical development report"
     )
 
+    # Select appropriate prompt prefix based on report type
+    if report_type == "technical" and "prompt_prefix_technical" in persona:
+        active_prompt_prefix = persona["prompt_prefix_technical"]
+    else:
+        active_prompt_prefix = persona["prompt_prefix"]
+
     format_context = ""
     if report_type == "public":
         if report_format == "structured":
@@ -2794,8 +2837,17 @@ async def review_report(
                 "When reviewing, also evaluate whether the format is compact and scannable, "
                 "and whether the one-liner intros are informative enough without being too verbose.\n"
             )
+    else:
+        format_context = (
+            "\n[Report Format]\n"
+            "This is a Technical Development Report. Each section has a ### header, "
+            "a one-sentence technical summary, and 2-5 bullet points in the format: "
+            "[Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL)).\n"
+            "When reviewing, evaluate whether technical details are accurate, commit references are meaningful, "
+            "and the engineering narrative is clear and comprehensive.\n"
+        )
 
-    prompt = f"""{persona["prompt_prefix"]}
+    prompt = f"""{active_prompt_prefix}
 
 [Report Type]
 {report_type_label}
@@ -2842,15 +2894,29 @@ IMPORTANT:
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
         cleaned = re.sub(r"\s*```$", "", cleaned)
 
+    # Try to extract JSON from mixed content (e.g., LLM adds text before/after JSON)
     try:
         review_data = _json.loads(cleaned)
     except (_json.JSONDecodeError, ValueError):
-        review_data = {
-            "issues": [],
-            "strengths": [],
-            "overall_score": 5,
-            "summary": cleaned,
-        }
+        # Attempt to find JSON object within the response
+        json_match = re.search(r'\{[\s\S]*"issues"[\s\S]*\}', cleaned)
+        if json_match:
+            try:
+                review_data = _json.loads(json_match.group())
+            except (_json.JSONDecodeError, ValueError):
+                review_data = {
+                    "issues": [],
+                    "strengths": [],
+                    "overall_score": 5,
+                    "summary": cleaned,
+                }
+        else:
+            review_data = {
+                "issues": [],
+                "strengths": [],
+                "overall_score": 5,
+                "summary": cleaned,
+            }
 
     return JSONResponse({
         "success": True,
@@ -2929,6 +2995,14 @@ async def improve_report(
                 "a one-sentence project overview followed by 5 bullet points with **bold action phrases**. "
                 "No extra headers or title lines. Keep it compact and scannable."
             )
+    else:
+        format_instruction = (
+            "8. Preserve the technical report format: each section must have a ### header, "
+            "a one-sentence technical summary, and 2-5 bullet points in the format: "
+            "[Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL)). "
+            "Preserve all commit links, SHA references, and PR numbers. "
+            "Do NOT remove technical details, function names, or repository paths."
+        )
 
     prompt = f"""[Role]
 You are a senior technical writer at a blockchain company. Your task is to improve a report based on reviewer feedback.
