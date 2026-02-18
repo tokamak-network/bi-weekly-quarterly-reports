@@ -180,8 +180,8 @@ const resolveReportScope = (value: string) => {
 
 function renderMarkdown(md: string) {
   return md
-    .replace(/^### (.+)$/gm, '<h3 class="text-base font-semibold text-gray-900 mt-6 mb-2">$1</h3>')
-    .replace(/^#### (.+)$/gm, '<h4 class="font-semibold text-gray-800 mt-4 mb-2">$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3 style="font-size:1.25rem;font-weight:700;color:#111827;margin:1.5rem 0 0.5rem;padding-bottom:0.4rem;border-bottom:1px solid #e5e7eb;white-space:normal">$1</h3>')
+    .replace(/^#### (.+)$/gm, '<h4 style="font-size:1.1rem;font-weight:600;color:#1f2937;margin:1rem 0 0.5rem;white-space:normal">$1</h4>')
     .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
     .replace(/^- (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
     .replace(/^\d+\. (.+)$/gm, '<li class="ml-4 mb-1">$1</li>')
@@ -376,6 +376,8 @@ export default function Home() {
       if (!response.ok) throw new Error('Failed to generate report')
 
       const data = await response.json()
+      console.log('[DEBUG] full_report type:', typeof data.full_report, 'value:', data.full_report ? data.full_report.substring(0, 100) : data.full_report)
+      console.log('[DEBUG] sections count:', data.sections?.length, 'titles:', data.sections?.map((s: { title?: string }) => s.title))
       const reportSections: ReportSection[] = Array.isArray(data.sections)
         ? data.sections.map((s: ReportSection) => ({ title: s.title, content: s.content }))
         : []
@@ -396,6 +398,9 @@ export default function Home() {
               `${s.title ? `\n### ${s.title}\n\n` : '\n'}${s.content}`
             ).join('\n') ?? '',
           ].join('\n')
+
+      console.log('[DEBUG] fullReportContent is null:', fullReportContent === null)
+      console.log('[DEBUG] rawContent first 500 chars:', rawContent.substring(0, 500))
 
       setHighlight(data.highlight || '')
       setReportTitle(fullReportContent ? null : data.title || null)
