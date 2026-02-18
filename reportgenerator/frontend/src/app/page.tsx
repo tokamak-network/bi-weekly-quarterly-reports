@@ -312,6 +312,13 @@ export default function Home() {
   const [copiedMedium, setCopiedMedium] = useState(false)
   const reportContentRef = useRef<HTMLDivElement>(null)
 
+  // Podcast state
+  const [podcastScript, setPodcastScript] = useState<string | null>(null)
+  const [podcastAudio, setPodcastAudio] = useState<string | null>(null)
+  const [generatingScript, setGeneratingScript] = useState(false)
+  const [generatingAudio, setGeneratingAudio] = useState(false)
+  const [podcastError, setPodcastError] = useState<string | null>(null)
+
   /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
     if (detectedDaysOverride) return detectedDaysOverride
@@ -604,6 +611,40 @@ export default function Home() {
     }
   }
 
+  const handleUndoChange = (change: AppliedChange) => {
+    const report = editingReport ? editableText : (fullReport ?? rawMarkdown)
+
+    // Replace revised text back with original text
+    let reverted = report.replace(change.revisedText, change.originalText)
+
+    // Try flexible whitespace matching if exact match failed
+    if (reverted === report) {
+      try {
+        const escaped = change.revisedText
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\s+/g, '\\s+')
+        const regex = new RegExp(escaped)
+        reverted = report.replace(regex, change.originalText)
+      } catch { /* regex construction failed */ }
+    }
+
+    if (reverted !== report) {
+      setFullReport(reverted)
+      setRawMarkdown(reverted)
+      if (editingReport) setEditableText(reverted)
+
+      // Remove from appliedIssues
+      setAppliedIssues((prev) => {
+        const next = new Set(Array.from(prev))
+        next.delete(change.issueKey)
+        return next
+      })
+
+      // Remove from appliedChanges
+      setAppliedChanges((prev) => prev.filter((c) => c.issueKey !== change.issueKey))
+    }
+  }
+
   const handleHighlightIssue = (originalText: string | undefined) => {
     if (!originalText) return
     if (highlightedText === originalText) {
@@ -709,6 +750,41 @@ export default function Home() {
       if (data.success && data.improved_report) {
         setImprovedReport(data.improved_report)
         setViewMode('diff')
+
+        // Automatically start re-review in background
+        setReReviewing(true)
+        const levels = Object.keys(scores).map(Number)
+        Promise.allSettled(
+          levels.map(async (level) => {
+            const reviewFormData = new FormData()
+            reviewFormData.append('report_text', data.improved_report)
+            reviewFormData.append('report_type', reportType)
+            reviewFormData.append('report_format', reportFormat)
+            reviewFormData.append('reviewer_level', level.toString())
+            reviewFormData.append('model', selectedModel)
+
+            const previousReview = reviews.find((r) => r.reviewer_level === level)
+            if (previousReview) {
+              reviewFormData.append('is_improved', 'true')
+              reviewFormData.append('previous_score', (previousReview.review?.overall_score ?? '').toString())
+              reviewFormData.append('previous_summary', previousReview.review?.summary ?? '')
+            }
+
+            const reviewResponse = await fetch('http://localhost:8000/api/review', { method: 'POST', body: reviewFormData })
+            if (!reviewResponse.ok) return { level, score: null }
+            const reviewData = await reviewResponse.json()
+            return { level, score: reviewData.success ? reviewData.review.overall_score : null }
+          })
+        ).then((results) => {
+          const newPostScores: Record<number, number> = {}
+          for (const result of results) {
+            if (result.status === 'fulfilled' && result.value.score !== null) {
+              newPostScores[result.value.level] = result.value.score
+            }
+          }
+          setPostScores(newPostScores)
+          setReReviewing(false)
+        }).catch(() => setReReviewing(false))
       } else {
         setImproveError(data.error || 'Improvement returned empty result. Try again.')
       }
@@ -767,14 +843,101 @@ export default function Home() {
     }
   }
 
+  const handleGeneratePodcast = async () => {
+    const reportText = improvedReport || fullReport || rawMarkdown
+    if (!reportText) return
+
+    setGeneratingScript(true)
+    setPodcastError(null)
+    setPodcastScript(null)
+    setPodcastAudio(null)
+
+    try {
+      // Step 1: Generate script
+      const scriptFormData = new FormData()
+      scriptFormData.append('report_text', reportText)
+      scriptFormData.append('duration_minutes', '4')
+
+      const scriptResponse = await fetch('http://localhost:8000/api/generate-podcast-script', {
+        method: 'POST',
+        body: scriptFormData,
+      })
+
+      const scriptData = await scriptResponse.json()
+      if (!scriptData.success) {
+        setPodcastError(scriptData.error || 'Failed to generate script')
+        setGeneratingScript(false)
+        return
+      }
+
+      setPodcastScript(scriptData.script)
+      setGeneratingScript(false)
+      setGeneratingAudio(true)
+
+      // Step 2: Generate audio
+      const audioFormData = new FormData()
+      audioFormData.append('script', scriptData.script)
+
+      const audioResponse = await fetch('http://localhost:8000/api/generate-podcast-audio', {
+        method: 'POST',
+        body: audioFormData,
+      })
+
+      const audioData = await audioResponse.json()
+      if (!audioData.success) {
+        setPodcastError(audioData.error || 'Failed to generate audio')
+        setGeneratingAudio(false)
+        return
+      }
+
+      setPodcastAudio(audioData.audio_base64)
+    } catch (error) {
+      setPodcastError(`Podcast generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setGeneratingScript(false)
+      setGeneratingAudio(false)
+    }
+  }
+
+  const handleDownloadPodcast = () => {
+    if (!podcastAudio) return
+
+    const byteCharacters = atob(podcastAudio)
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    const blob = new Blob([byteArray], { type: 'audio/mp3' })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `podcast-report-${dateRange?.start ?? 'draft'}.mp3`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const convertToMediumFormat = (md: string): string => {
     return md
-      .replace(/^### (.+)$/gm, '# $1')
-      .replace(/^#### (.+)$/gm, '## $1')
-      .replace(/^\* \*\*([^*]+)\*\*:\s*/gm, '**$1** — ')
-      .replace(/^\* \*\*([^*]+)\*\*/gm, '**$1**')
-      .replace(/^\* /gm, '- ')
+      // Remove header markers (# ## ### ####) - keep text only
+      .replace(/^#{1,4}\s+(.+)$/gm, '$1')
+      // Remove bold markers (**text**) - keep text only
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      // Remove italic markers (*text* or _text_) - keep text only
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/_([^_]+)_/g, '$1')
+      // Convert markdown links [text](url) to "text (url)"
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+      // Convert bullet points (* or -) to simple dash
+      .replace(/^[\*\-]\s+/gm, '• ')
+      // Remove code blocks ```
+      .replace(/```[\s\S]*?```/g, '')
+      // Remove inline code `text`
+      .replace(/`([^`]+)`/g, '$1')
+      // Clean up excessive newlines
       .replace(/\n{3,}/g, '\n\n')
       .trim()
   }
@@ -785,24 +948,27 @@ export default function Home() {
 
   if (step === 1) {
     return (
-      <div className="min-h-screen bg-white text-gray-900">
+      <div className="min-h-screen tokamak-grid text-gray-900">
         <main className="mx-auto w-full max-w-6xl px-6 pb-16 pt-12">
           <div className="mb-10">
-            <h1 className="text-3xl font-semibold text-gray-900">Biweekly Report Generator</h1>
-            <p className="mt-2 text-sm text-gray-500">
+            <h1 className="text-4xl font-light tracking-tight text-gray-900">
+              BIWEEKLY REPORT
+              <span className="block text-2xl font-normal text-gray-400 mt-1">GENERATOR</span>
+            </h1>
+            <p className="mt-4 text-sm text-gray-500">
               Generate ecosystem reports from GitHub activity data, then review and refine with AI reviewers.
             </p>
             {/* Step indicator */}
-            <div className="mt-4 flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
+            <div className="mt-6 flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-1.5 font-semibold text-white">
                 1. Generate
               </span>
-              <span className="h-px w-6 bg-gray-300" />
-              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
-                2. Review &amp; Improve
+              <span className="h-px w-8 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
+                2. Review
               </span>
-              <span className="h-px w-6 bg-gray-300" />
-              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+              <span className="h-px w-8 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
                 3. Publish
               </span>
             </div>
@@ -1053,9 +1219,9 @@ export default function Home() {
                 <button
                   onClick={handleGenerate}
                   disabled={loading}
-                  className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-50"
+                  className="mt-6 w-full rounded-full bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg disabled:opacity-50"
                 >
-                  {loading ? 'Generating...' : 'Generate Report'}
+                  {loading ? 'Generating...' : 'GENERATE REPORT'}
                 </button>
               </div>
             </section>
@@ -1114,9 +1280,9 @@ export default function Home() {
                 {generated && (
                   <button
                     onClick={() => setStep(2)}
-                    className="mt-4 w-full rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800"
+                    className="mt-4 w-full rounded-full bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg"
                   >
-                    Proceed to Review &amp; Improve →
+                    PROCEED TO REVIEW →
                   </button>
                 )}
               </div>
@@ -1136,7 +1302,7 @@ export default function Home() {
     const mediumContent = convertToMediumFormat(finalReport)
 
     return (
-      <div className="min-h-screen bg-white text-gray-900">
+      <div className="min-h-screen tokamak-grid text-gray-900">
         <main className="mx-auto w-full max-w-5xl px-6 pb-16 pt-8">
           {/* Header */}
           <div className="mb-6 flex items-center justify-between">
@@ -1147,22 +1313,22 @@ export default function Home() {
               >
                 ← Back to Review
               </button>
-              <h1 className="text-2xl font-semibold text-gray-900">Publish to Medium</h1>
-              <p className="mt-1 text-xs text-gray-500">
+              <h1 className="text-3xl font-light tracking-tight text-gray-900">PUBLISH</h1>
+              <p className="mt-2 text-sm text-gray-500">
                 Final report formatted for Medium. Copy and paste directly into your Medium editor.
               </p>
             </div>
             {/* Step indicator */}
             <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
                 1. Generate
               </span>
-              <span className="h-px w-6 bg-gray-300" />
-              <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+              <span className="h-px w-8 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
                 2. Review
               </span>
-              <span className="h-px w-6 bg-gray-300" />
-              <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
+              <span className="h-px w-8 bg-gray-300" />
+              <span className="flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-1.5 font-semibold text-white">
                 3. Publish
               </span>
             </div>
@@ -1185,13 +1351,13 @@ export default function Home() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleCopy(mediumContent, setCopiedMedium)}
-                      className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition"
+                      className="rounded-full bg-gray-900 px-5 py-2 text-xs font-semibold text-white hover:bg-gray-800 transition"
                     >
-                      {copiedMedium ? 'Copied!' : 'Copy for Medium'}
+                      {copiedMedium ? 'Copied!' : 'COPY FOR MEDIUM'}
                     </button>
                     <button
                       onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.txt`)}
-                      className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200 transition"
+                      className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
                     >
                       Download .txt
                     </button>
@@ -1221,12 +1387,12 @@ export default function Home() {
                     </ol>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3">
-                    <div className="font-semibold text-gray-700 mb-1">Format Adjustments</div>
+                    <div className="font-semibold text-gray-700 mb-1">Format (Clean Text)</div>
                     <ul className="space-y-1">
-                      <li>&#x2022; Headers converted to # / ## for Medium</li>
-                      <li>&#x2022; Bullet points use - (dash) format</li>
-                      <li>&#x2022; Bold titles preserved with ** syntax</li>
-                      <li>&#x2022; Links shown as text (URL) format</li>
+                      <li>&#x2022; All markdown symbols removed</li>
+                      <li>&#x2022; Headers as plain text</li>
+                      <li>&#x2022; Bullet points use • format</li>
+                      <li>&#x2022; Links shown as text (URL)</li>
                     </ul>
                   </div>
                 </div>
@@ -1296,6 +1462,99 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+
+              {/* Podcast Generation */}
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-semibold text-gray-900">Podcast Summary</h3>
+                <p className="mt-1 text-[10px] text-gray-500">
+                  Generate a 3-5 min audio summary with two hosts discussing the report highlights.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  {!podcastAudio && (
+                    <button
+                      onClick={handleGeneratePodcast}
+                      disabled={generatingScript || generatingAudio}
+                      className="w-full rounded-lg bg-purple-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-purple-700 transition disabled:opacity-50"
+                    >
+                      {generatingScript ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Generating script...
+                        </span>
+                      ) : generatingAudio ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Creating audio...
+                        </span>
+                      ) : (
+                        '🎙️ Generate Podcast'
+                      )}
+                    </button>
+                  )}
+
+                  {podcastError && (
+                    <div className="rounded-lg bg-red-50 border border-red-200 p-2">
+                      <p className="text-[10px] text-red-600">{podcastError}</p>
+                    </div>
+                  )}
+
+                  {podcastAudio && (
+                    <div className="space-y-2">
+                      <div className="rounded-lg bg-purple-50 border border-purple-200 p-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-purple-700">
+                          <span>🎧</span> Podcast ready!
+                        </div>
+                        <audio
+                          controls
+                          className="w-full mt-2 h-8"
+                          src={`data:audio/mp3;base64,${podcastAudio}`}
+                        />
+                      </div>
+
+                      <button
+                        onClick={handleDownloadPodcast}
+                        className="w-full rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition"
+                      >
+                        Download Podcast (.mp3)
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const reportTitle = dateRange?.start
+                            ? `Tokamak Network Biweekly Report (${dateRange.start})`
+                            : 'Tokamak Network Biweekly Report'
+                          const tweetText = `🎙️ New podcast episode! Listen to our ${reportTitle} audio summary.\n\n#TokamakNetwork #L2 #Ethereum #Blockchain`
+                          const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
+                          window.open(xUrl, '_blank', 'width=550,height=420')
+                        }}
+                        className="w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 transition flex items-center justify-center gap-2"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                        </svg>
+                        Share to X
+                      </button>
+
+                      <button
+                        onClick={() => { setPodcastAudio(null); setPodcastScript(null); }}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
+                      >
+                        Generate New Podcast
+                      </button>
+                    </div>
+                  )}
+
+                  {podcastScript && !podcastAudio && !generatingAudio && (
+                    <div className="rounded-lg bg-gray-50 p-3">
+                      <div className="text-[10px] font-semibold text-gray-600 mb-1">Script Preview</div>
+                      <div className="text-[9px] text-gray-500 max-h-20 overflow-y-auto whitespace-pre-wrap">
+                        {podcastScript.slice(0, 500)}...
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </main>
@@ -1308,7 +1567,7 @@ export default function Home() {
   /* ================================================================ */
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen tokamak-grid text-gray-900">
       <main className="mx-auto w-full max-w-7xl px-6 pb-16 pt-8">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
@@ -1319,20 +1578,20 @@ export default function Home() {
             >
               ← Back to Generator
             </button>
-            <h1 className="text-2xl font-semibold text-gray-900">Review &amp; Improve</h1>
-            <p className="mt-1 text-xs text-gray-500">{metaText}</p>
+            <h1 className="text-3xl font-light tracking-tight text-gray-900">REVIEW &amp; IMPROVE</h1>
+            <p className="mt-2 text-sm text-gray-500">{metaText}</p>
           </div>
           {/* Step indicator */}
           <div className="flex items-center gap-3 text-xs">
-            <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+            <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
               1. Generate
             </span>
-            <span className="h-px w-6 bg-gray-300" />
-            <span className="flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 font-semibold text-white">
-              2. Review &amp; Improve
+            <span className="h-px w-8 bg-gray-300" />
+            <span className="flex items-center gap-1.5 rounded-full bg-gray-900 px-4 py-1.5 font-semibold text-white">
+              2. Review
             </span>
-            <span className="h-px w-6 bg-gray-300" />
-            <span className="flex items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-gray-400">
+            <span className="h-px w-8 bg-gray-300" />
+            <span className="flex items-center gap-1.5 rounded-full border border-gray-300 px-4 py-1.5 text-gray-400">
               3. Publish
             </span>
           </div>
@@ -1430,11 +1689,19 @@ export default function Home() {
                 <div className="space-y-1.5 max-h-40 overflow-y-auto">
                   {appliedChanges.map((c, i) => (
                     <div key={i} className="rounded-lg bg-white border border-blue-100 p-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700">
-                          {c.reviewerKo}
-                        </span>
-                        <span className="text-[9px] text-gray-400">{c.category}</span>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[9px] font-semibold text-blue-700">
+                            {c.reviewerKo}
+                          </span>
+                          <span className="text-[9px] text-gray-400">{c.category}</span>
+                        </div>
+                        <button
+                          onClick={() => handleUndoChange(c)}
+                          className="text-[9px] text-red-500 hover:text-red-700 font-medium transition"
+                        >
+                          Undo
+                        </button>
                       </div>
                       <div className="text-[10px] leading-4">
                         <span className="text-red-500 line-through">{c.originalText.length > 80 ? c.originalText.slice(0, 80) + '...' : c.originalText}</span>
@@ -1705,12 +1972,23 @@ export default function Home() {
                                             <div className="mt-2 space-y-1">
                                               <div className="rounded bg-red-50 px-2 py-1 text-[10px] text-red-700 line-through">{issue.original_text}</div>
                                               <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700">{issue.revised_text}</div>
-                                              {!isApplied && (
+                                              {!isApplied ? (
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleApplyIssue(issue, result.reviewer_ko) }}
                                                   className="mt-1 rounded bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white hover:bg-blue-700 transition"
                                                 >
                                                   Apply this change
+                                                </button>
+                                              ) : (
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    const change = appliedChanges.find(c => c.issueKey === issueKey)
+                                                    if (change) handleUndoChange(change)
+                                                  }}
+                                                  className="mt-1 rounded bg-gray-100 px-2.5 py-1 text-[10px] font-semibold text-red-600 hover:bg-red-50 transition"
+                                                >
+                                                  Undo this change
                                                 </button>
                                               )}
                                             </div>
@@ -1859,12 +2137,40 @@ export default function Home() {
                 </div>
               )}
 
+              {/* Proceed button - shown when no AI improvements have been generated yet */}
+              {!improvedReport && (
+                <button
+                  onClick={() => setStep(3)}
+                  className={`mt-3 w-full rounded-full px-6 py-3 text-sm font-semibold transition ${
+                    appliedChanges.length > 0
+                      ? 'bg-gray-900 text-white shadow-sm hover:bg-gray-800 hover:shadow-lg'
+                      : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {appliedChanges.length > 0
+                    ? `PROCEED WITH ${appliedChanges.length} CHANGE${appliedChanges.length > 1 ? 'S' : ''} →`
+                    : 'SKIP & PROCEED TO PUBLISH →'}
+                </button>
+              )}
+
               {improvedReport && (
                 <div className="mt-3 space-y-3">
                   <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
-                      <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-200 text-[10px]">&#10003;</span>
-                      Improved report generated
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-200 text-[10px]">&#10003;</span>
+                        Improved report generated
+                      </div>
+                      <button
+                        onClick={() => {
+                          setImprovedReport(null)
+                          setViewMode('original')
+                          setPostScores({})
+                        }}
+                        className="text-[10px] text-gray-500 hover:text-red-600 font-medium transition"
+                      >
+                        Revert to Original
+                      </button>
                     </div>
                     <p className="mt-1 text-[11px] text-emerald-600">
                       Switch to &quot;Improved&quot; or &quot;Changes&quot; tab to view the result.
@@ -1932,9 +2238,9 @@ export default function Home() {
                   {/* Proceed to Publish */}
                   <button
                     onClick={() => setStep(3)}
-                    className="w-full rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800"
+                    className="w-full rounded-full bg-gray-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg"
                   >
-                    Proceed to Publish →
+                    PROCEED TO PUBLISH →
                   </button>
                 </div>
               )}
