@@ -2799,6 +2799,9 @@ async def review_report(
     reviewer_level: int = Form(3),
     model: Optional[str] = Form(None),
     report_format: str = Form("concise"),
+    previous_score: Optional[int] = Form(None),
+    previous_summary: Optional[str] = Form(None),
+    is_improved: Optional[str] = Form(None),
 ):
     """Review a generated report using a virtual reviewer persona."""
     refresh_env()
@@ -2814,8 +2817,15 @@ async def review_report(
 
     selected_model = model or get_tokamak_model()
 
+    previous_context = None
+    if is_improved == "true" and previous_score is not None:
+        previous_context = {
+            "previous_score": previous_score,
+            "previous_summary": previous_summary or "",
+        }
+
     try:
-        return await _do_review(report_text, report_type, reviewer_level, selected_model, persona, report_format)
+        return await _do_review(report_text, report_type, reviewer_level, selected_model, persona, report_format, previous_context=previous_context)
     except HTTPException:
         raise
     except Exception as exc:
@@ -2829,7 +2839,7 @@ async def review_report(
         })
 
 
-async def _do_review(report_text: str, report_type: str, reviewer_level: int, selected_model: str, persona: dict, report_format: str):
+async def _do_review(report_text: str, report_type: str, reviewer_level: int, selected_model: str, persona: dict, report_format: str, previous_context: Optional[dict] = None):
     import json as _json
 
     report_type_label = (
@@ -2881,12 +2891,30 @@ async def _do_review(report_text: str, report_type: str, reviewer_level: int, se
     else:
         truncated_report = report_text
 
+    # Build previous review context section if this is a re-review of an improved report
+    previous_review_section = ""
+    if previous_context:
+        prev_score = previous_context.get("previous_score", "N/A")
+        prev_summary = previous_context.get("previous_summary", "")
+        previous_review_section = f"""
+[Previous Review Context]
+This report has been IMPROVED based on prior reviewer feedback. You are re-reviewing the revised version.
+- Your previous score for the original version: {prev_score}/10
+- Your previous assessment: {prev_summary}
+
+IMPORTANT scoring guidance for re-reviews:
+- Compare this revised report against the original issues you identified.
+- If improvements were made that address your prior concerns, your score SHOULD increase accordingly.
+- Only keep the same or lower score if the report has NOT improved or has introduced new problems.
+- Be fair and consistent: acknowledge genuine improvements in your scoring.
+"""
+
     prompt = f"""{active_prompt_prefix}
 
 [Report Type]
 {report_type_label}
 {format_context}
-[Report to Review]
+{previous_review_section}[Report to Review]
 {truncated_report}
 
 [Output Format]
@@ -2909,6 +2937,7 @@ Provide your review as JSON. For each issue, include the EXACT original text and
 
 IMPORTANT:
 - For each issue, you MUST include original_text (copied EXACTLY from the report) and revised_text (your improved version).
+- PRESERVE MARKDOWN FORMATTING: The report uses markdown syntax (e.g., # headings, **bold**, [links](url), - bullet points). When quoting original_text, copy the EXACT text INCLUDING all markdown symbols (#, **, *, [], (), -, etc.). In revised_text, also keep the same markdown formatting style. Do NOT strip or alter markdown syntax.
 - Be specific and constructive. Show exactly what to change, not just what's wrong.
 - You MUST provide at least 3 issues and at least 2 strengths.
 - The overall_score MUST be an integer between 1 and 10.
@@ -3063,9 +3092,9 @@ IMPORTANT:
 {truncated_report[:2000]}
 
 Respond with this exact JSON format:
-{{"issues":[{{"category":"clarity","description":"issue description","suggestion":"fix suggestion","severity":"medium","original_text":"exact quote","revised_text":"improved version"}}],"strengths":["strength 1"],"overall_score":6,"summary":"brief assessment"}}
+{{"issues":[{{"category":"clarity","description":"issue description","suggestion":"fix suggestion","severity":"medium","original_text":"exact quote from report","revised_text":"improved version"}}],"strengths":["strength 1"],"overall_score":6,"summary":"brief assessment"}}
 
-Give 2-3 issues and 2 strengths. Start with {{ end with }}."""
+Give 2-3 issues and 2 strengths. IMPORTANT: In original_text and revised_text, preserve all markdown syntax (#, **, *, [], (), - etc.) exactly as it appears in the report. Start with {{ end with }}."""
 
         retry_response = generate_with_llm(retry_prompt, max_tokens=2000, model=selected_model, timeout_override=retry_timeout)
         if retry_response:
