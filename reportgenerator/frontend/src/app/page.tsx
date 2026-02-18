@@ -622,6 +622,32 @@ export default function Home() {
 
   const renderMarkdownWithHighlight = (md: string) => {
     let html = renderMarkdown(md)
+
+    // Highlight applied changes inline in the report body
+    if (appliedChanges.length > 0 && viewMode === 'original' && !editingReport && !highlightedText) {
+      for (const change of appliedChanges) {
+        const escapedRegex = change.revisedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        try {
+          // HTML-escape original text for safe display
+          const origDisplay = change.originalText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+          const truncOrig = origDisplay.length > 120 ? origDisplay.slice(0, 120) + '…' : origDisplay
+          html = html.replace(
+            new RegExp(`(${escapedRegex})`),
+            `<span class="applied-change-inline" style="position:relative;">` +
+            `<del style="color:#f87171;background:#fef2f2;border-radius:2px;padding:0 2px;font-size:0.7em;line-height:1;vertical-align:baseline;text-decoration:line-through;">${truncOrig}</del>` +
+            `<span style="color:#d1d5db;font-size:0.7em;margin:0 3px;">→</span>` +
+            `<ins style="color:#047857;background:#ecfdf5;border-bottom:2px solid #34d399;border-radius:2px;padding:0 2px;text-decoration:none;">$1</ins>` +
+            `</span>`
+          )
+        } catch { /* regex construction failed */ }
+      }
+    }
+
+    // Highlight preview text (yellow) — takes precedence (applied-change highlights skipped when highlightedText is set)
     if (highlightedText) {
       const escaped = highlightedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       html = html.replace(
