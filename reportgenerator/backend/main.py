@@ -3187,7 +3187,11 @@ async def improve_report(
             category = issue.get("category", "")
             desc = issue.get("description", "")
             suggestion = issue.get("suggestion", "")
+            original_text = issue.get("original_text", "")
+            revised_text = issue.get("revised_text", "")
             feedback_text += f"- [{severity}] {category}: {desc} -> {suggestion}\n"
+            if original_text and revised_text:
+                feedback_text += f"  CHANGE: \"{original_text}\" → \"{revised_text}\"\n"
 
     if report_type == "public":
         tone_instruction = (
@@ -3204,19 +3208,19 @@ async def improve_report(
     if report_type == "public":
         if report_format == "structured":
             format_instruction = (
-                "8. Preserve Format B (Structured) across all sections: each section must have "
+                "9. Preserve Format B (Structured) across all sections: each section must have "
                 "a title, introductory paragraph, 'Key Accomplishments' header, and 5 bullet points "
                 "with **bold action phrases**. Ensure all sections follow this structure consistently."
             )
         else:
             format_instruction = (
-                "8. Preserve Format A (Concise) across all sections: each section must have "
+                "9. Preserve Format A (Concise) across all sections: each section must have "
                 "a one-sentence project overview followed by 5 bullet points with **bold action phrases**. "
                 "No extra headers or title lines. Keep it compact and scannable."
             )
     else:
         format_instruction = (
-            "8. Preserve the technical report format: each section must have a ### header, "
+            "9. Preserve the technical report format: each section must have a ### header, "
             "a one-sentence technical summary, and 2-5 bullet points in the format: "
             "[Action Verb] [Specific Function/Feature] in [Repository Path] ([Commit](URL)). "
             "Preserve all commit links, SHA references, and PR numbers. "
@@ -3224,16 +3228,17 @@ async def improve_report(
         )
 
     prompt = f"""[Role]
-You are a senior technical writer at a blockchain company. Your task is to improve a report based on reviewer feedback.
+You are a senior technical writer at a blockchain company. Your task is to improve a report by applying ONLY the specific changes requested in the reviewer feedback.
 
 [Instructions]
 1. Read the original report and the reviewer feedback carefully.
-2. Address each reviewer's concerns where valid.
-3. {tone_instruction}
-4. Preserve all factual content — do not invent or fabricate information.
-5. Keep the same overall structure (headers, sections).
-6. Improve clarity, flow, and readability.
-7. Output ONLY the improved report in markdown. No meta-commentary.
+2. For each feedback item with a "CHANGE:" line, find the exact original text in the report and replace it with the revised text.
+3. ONLY apply the specific changes marked with "CHANGE:". Do NOT make any other modifications.
+4. If a feedback item has no "CHANGE:" line, skip it — do not improvise changes.
+5. {tone_instruction}
+6. Preserve all factual content — do not invent or fabricate information.
+7. Keep the same overall structure (headers, sections).
+8. Output ONLY the improved report in markdown. No meta-commentary.
 {format_instruction}
 
 [Original Report]
@@ -3261,6 +3266,144 @@ You are a senior technical writer at a blockchain company. Your task is to impro
         "model": selected_model,
         "reviews_applied": len(reviews),
     })
+
+
+# ================================================================
+# Podcast Generation Endpoints
+# ================================================================
+
+@app.post("/api/generate-podcast-script")
+async def generate_podcast_script(
+    report_text: str = Form(...),
+    duration_minutes: int = Form(4),
+):
+    """Generate a 2-person podcast dialogue script from the report."""
+    refresh_env()
+
+    # Use Claude for script generation (better at creative dialogue)
+    prompt = f"""You are a podcast script writer. Convert this blockchain development report into an engaging 2-person podcast dialogue.
+
+[Guidelines]
+- Create a natural conversation between two hosts: Alex (enthusiastic tech explainer) and Sam (curious questioner)
+- Target duration: {duration_minutes} minutes (approximately {duration_minutes * 150} words)
+- Start with a brief intro welcoming listeners
+- Cover the main highlights and achievements from the report
+- Use conversational language, avoid jargon where possible
+- End with a summary and sign-off
+- Format each line as: ALEX: [dialogue] or SAM: [dialogue]
+- Make it engaging and informative, like a tech podcast
+
+[Report to Convert]
+{report_text[:8000]}
+
+[Podcast Script]"""
+
+    selected_model = get_tokamak_model()
+    script = generate_with_llm(prompt, max_tokens=3000, model=selected_model, timeout_override=120)
+
+    if not script:
+        return JSONResponse({
+            "success": False,
+            "error": "Failed to generate podcast script"
+        })
+
+    return JSONResponse({
+        "success": True,
+        "script": script.strip(),
+        "estimated_duration": duration_minutes,
+    })
+
+
+@app.post("/api/generate-podcast-audio")
+async def generate_podcast_audio(
+    script: str = Form(...),
+):
+    """Generate podcast audio from script using OpenAI TTS."""
+    from fastapi.responses import Response
+    import tempfile
+    import base64
+
+    refresh_env()
+
+    if not HAS_OPENAI:
+        return JSONResponse({
+            "success": False,
+            "error": "OpenAI library not available"
+        })
+
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("TOKAMAK_API_KEY")
+    if not api_key:
+        return JSONResponse({
+            "success": False,
+            "error": "OpenAI API key not configured. Set OPENAI_API_KEY or TOKAMAK_API_KEY environment variable."
+        })
+
+    try:
+        client = OpenAI(api_key=api_key)
+
+        # Parse script into speaker segments
+        lines = script.strip().split('\n')
+        segments = []
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('ALEX:'):
+                segments.append(('alloy', line[5:].strip()))  # alloy = friendly female voice
+            elif line.startswith('SAM:'):
+                segments.append(('onyx', line[4:].strip()))   # onyx = deep male voice
+            elif line.startswith('Alex:') or line.startswith('alex:'):
+                segments.append(('alloy', line[5:].strip()))
+            elif line.startswith('Sam:') or line.startswith('sam:'):
+                segments.append(('onyx', line[4:].strip()))
+
+        if not segments:
+            return JSONResponse({
+                "success": False,
+                "error": "No valid dialogue found in script"
+            })
+
+        # Generate audio for each segment
+        audio_chunks = []
+
+        for voice, text in segments:
+            if not text:
+                continue
+            try:
+                response = client.audio.speech.create(
+                    model="tts-1",
+                    voice=voice,
+                    input=text,
+                    response_format="mp3"
+                )
+                audio_chunks.append(response.content)
+            except Exception as e:
+                print(f"[PODCAST] TTS error for segment: {e}")
+                continue
+
+        if not audio_chunks:
+            return JSONResponse({
+                "success": False,
+                "error": "Failed to generate any audio segments"
+            })
+
+        # Concatenate audio chunks (simple concatenation for MP3)
+        combined_audio = b''.join(audio_chunks)
+
+        # Return as base64 encoded audio
+        audio_base64 = base64.b64encode(combined_audio).decode('utf-8')
+
+        return JSONResponse({
+            "success": True,
+            "audio_base64": audio_base64,
+            "format": "mp3",
+            "segments_count": len(audio_chunks),
+        })
+
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": f"Audio generation failed: {str(e)}"
+        })
 
 
 if __name__ == "__main__":
