@@ -115,6 +115,32 @@ SECTION_INFO_INDIVIDUAL_TECHNICAL = {
     "context": "Individual project work outside the three core initiatives.",
 }
 
+REPO_DESCRIPTIONS = {
+    # Ooo (Private App Channels)
+    "Tokamak-zk-EVM": "Core ZK-EVM engine enabling private smart contract execution with zero-knowledge proofs on Ethereum",
+    "Tokamak-zk-EVM-contracts": "On-chain smart contracts for ZK-EVM verification, deposit/withdrawal, and state management",
+    "private-app-channel-manager": "SDK for creating and managing private application channels with encrypted state transitions",
+    "tokamak-zkp-channel-manager-new": "Next-generation ZK proof channel manager with improved proof generation and verification",
+    "TokamakL2JS": "JavaScript library for interacting with Tokamak Layer 2 from web applications",
+    "Tokamak-zk-EVM-landing-page": "Public-facing website and documentation for the ZK-EVM project",
+    # Eco (Staking & Governance)
+    "ton-staking-v2": "TON token staking platform enabling holders to earn rewards while securing the network",
+    "tokamak-economics-whitepaper-v2": "Tokenomics research and whitepaper defining the TON economic model and incentive structures",
+    "RAT-frontend": "RAT (Reward-based Automated TON) verification interface for staking reward distribution",
+    "staking-community-version": "Community-accessible staking dashboard for TON holders to manage their staking positions",
+    "tokamak-dao-v2": "Decentralized governance platform where TON holders vote on protocol proposals and upgrades",
+    "tokamak-landing-page": "Main Tokamak Network website serving as the public entry point to the ecosystem",
+    # TRH (Rollup Hub)
+    "trh-sdk": "Developer SDK for deploying custom Layer 2 rollups on Tokamak Rollup Hub with minimal configuration",
+    "trh-backend": "Backend infrastructure powering the Tokamak Rollup Hub deployment and management services",
+    "trh-platform-ui": "Web-based dashboard for managing and monitoring deployed L2 rollup instances",
+    "DRB-node": "Distributed Random Beacon node providing verifiable randomness for rollup sequencing",
+    "tokamak-thanos": "Tokamak Thanos rollup stack — optimistic rollup implementation for Ethereum scaling",
+    "tokamak-rollup-hub-v2": "Next-generation Rollup Hub platform enabling one-click L2 chain deployment",
+    "tokamak-thanos-stack": "Full-stack tooling and infrastructure for operating Thanos-based rollup chains",
+    "tokamak-thanos-geth": "Modified Geth execution client optimized for the Tokamak Thanos rollup environment",
+}
+
 SECTION_INFO_INDIVIDUAL_PUBLIC = {
     "number": "2.5",
     "title": "Individual Contributions",
@@ -1853,13 +1879,15 @@ def generate_repo_public_section(
             "focusing on continuous maintenance, documentation, and automated testing to ensure a robust ecosystem.\n"
         )
 
+    repo_desc = REPO_DESCRIPTIONS.get(repo_name, f"Development work on {repo_name}")
     info = {
         "number": "",
         "title": repo_name,
-        "context": f"Repository activity summary for {repo_name}.",
+        "context": repo_desc,
         "overview_url": f"https://github.com/tokamak-network/{repo_name}",
         "business_focus": summary.get("business_focus", "Ecosystem development"),
     }
+    print(f"[REPO PUBLIC] repo={repo_name}, use_ai={use_ai}, model={model}, has_client={has_tokamak_client(model)}")
     if use_ai and has_tokamak_client(model):
         section = generate_with_ai_public(repo_name, summary, info, model=model)
     else:
@@ -1933,43 +1961,63 @@ def generate_with_ai_public(project: str, summary: dict, info: dict, model: Opti
         for c in summary['top_commits'][:12]
     ])
 
+    pr_list = "\n".join([
+        f"- [{p['repo']}] PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), False)}"
+        for p in summary.get('merged_pr_list', [])[:6]
+    ])
+
+    # Build repo descriptions for context
+    repo_desc_lines = []
+    seen_repos = set()
+    for c in summary.get('top_commits', [])[:20]:
+        repo = c.get('repo', '')
+        if repo and repo not in seen_repos:
+            seen_repos.add(repo)
+            desc = REPO_DESCRIPTIONS.get(repo, '')
+            if desc:
+                repo_desc_lines.append(f"- {repo}: {desc}")
+    repo_descriptions = "\n".join(repo_desc_lines) if repo_desc_lines else "N/A"
+
     prompt = f"""[Role]
-You are a Visionary Tech Evangelist at Tokamak Network. Your task is to generate an engaging Public Ecosystem Update based on the provided activity data.
+You are writing a public progress update for Tokamak Network, targeting investors, community members, and general readers who want to understand what was accomplished and why it matters.
 
-[Team & Project Context]
-- 2.2 (Ooo): Private Transactions & Secure Channels.
-- 2.3 (Eco): Staking Rewards & Community Governance.
-- 2.4 (TRH): One-Click Layer 2 Deployment Infrastructure.
+[About This Repository/Project]
+{info['title']}: {info.get('context', '')}
+Business Focus: {info.get('business_focus', 'Ecosystem development')}
 
-[Constraints]
-0. Output only bullet points. Do not include analysis, reasoning, or meta commentary.
-1. Header: "Tokamak Network Bi-Weekly Report: [Date Range]"
-2. Highlight Section: Write a 3-sentence opening that connects the technical progress to user benefits (e.g., increased privacy, faster withdrawals, easier deployment).
-3. Grouping: Use engaging titles:
-   - "Private & Secure Transactions (Ooo)"
-   - "Staking & Economic Security (Eco)"
-   - "Scalable Infrastructure (TRH)"
-4. Jargon Filter: Translate all technical terms into "User Impact" language.
-   - Example: Instead of "NFT-based registry", use "Secured ownership through digital asset architecture."
-   - Example: Instead of "pnpm monorepo", use "Optimized system structure for faster development."
-5. Formatting: Focus on "Results" (Launched, Secured, Improved). Do not show commit links or raw file paths in this version.
-6. Contributors: Focus on how each person's work improved the overall project mission.
-7. {model_style_hint(model, "public")}
+[Repository Descriptions]
+{repo_descriptions}
 
-[Data Input]
-Project: {info['title']}
+[Instructions]
+1. Start with a 1-2 sentence overview explaining WHAT this project/repository does and WHY it matters to users.
+2. Then list 3-5 bullet points of key accomplishments from this period.
+3. Each bullet should:
+   - Start with a strong action verb (Launched, Enhanced, Strengthened, Delivered, etc.)
+   - Explain the user-facing benefit, not just the technical change
+   - Translate technical jargon into plain language
+   - Example: Instead of "refactored staking contract logic", write "Improved staking reliability so users experience fewer transaction failures"
+4. Do NOT include: commit hashes, file paths, PR numbers, section headers, or meta commentary.
+5. Output in English only.
+6. {model_style_hint(model, "public")}
+
+[Activity Data]
 Date Range: {summary.get('start_date', 'N/A')} to {summary.get('end_date', 'N/A')}
-Context: {info['context']}
-Business Focus: {info['business_focus']}
-Total improvements: {summary['total_commits']}
+Total commits: {summary['total_commits']}
+Merged PRs: {summary.get('merged_prs', 0)}
 
-Recent commits (for context only):
+Recent commits:
 {commit_list}
+
+Merged PRs:
+{pr_list}
 """
 
+    print(f"[AI PUBLIC] Calling model={model} for project={project}")
     bullets = generate_with_llm(prompt, max_tokens=1000, model=model)
     if not bullets:
+        print(f"[AI PUBLIC] LLM returned None for project={project}, falling back to basic")
         return generate_basic_public(project, summary, info)
+    print(f"[AI PUBLIC] Got AI response for project={project} ({len(bullets)} chars)")
     return f"{bullets}\n"
 
 
@@ -1992,7 +2040,14 @@ def generate_basic_public(project: str, summary: dict, info: dict) -> str:
     """Generate basic public section without AI."""
     commits = summary['top_commits']
     merged_prs = summary.get('merged_pr_list', [])
-    intro = sentence_case(info['context'].rstrip('.'))
+
+    # Use repo description as intro if available
+    repo_desc = REPO_DESCRIPTIONS.get(project, "")
+    if repo_desc:
+        intro = repo_desc
+    else:
+        intro = sentence_case(info['context'].rstrip('.'))
+
     deliverables = extract_public_pr_deliverables(merged_prs, 4)
     if len(deliverables) < 3:
         deliverables.extend(extract_public_commit_deliverables(commits, 4 - len(deliverables)))
@@ -2165,20 +2220,23 @@ def generate_highlight_with_ai(
             if date_range and date_range.get("start") and date_range.get("end"):
                 date_label = f"{date_range['start']} to {date_range['end']}"
             prompt = f"""[Role]
-You are a Visionary Tech Evangelist. Your task is to generate a concise highlight for Tokamak Network.
+You are writing the opening highlight paragraph for Tokamak Network's bi-weekly progress report. Your audience includes investors, TON token holders, community members, and general readers.
 
-[Tone]
-Inspiring, accessible, and benefit-oriented. Focus on "Why it matters" and "User Impact."
+[About Tokamak Network]
+Tokamak Network is building Ethereum Layer 2 infrastructure with three core initiatives:
+- Privacy (Ooo): Zero-knowledge proof technology for private transactions
+- Staking & Governance (Eco): TON token staking rewards and decentralized governance
+- Rollup Hub (TRH): One-click Layer 2 deployment platform for developers
 
-[Constraints]
-0. Output only the highlight text. Do not include analysis, reasoning, or meta commentary.
-1. Highlight must be exactly 3 sentences.
-2. Do not include section headers, bullet points, or grouping labels.
-3. Use bold numbers for total development activity.
-4. Output in English only.
-5. Avoid listing repository names; keep it outcome-focused.
+[Instructions]
+1. Write exactly 3 sentences that serve as an executive summary.
+2. Sentence 1: State what Tokamak Network accomplished this period in a way that excites investors and community.
+3. Sentence 2: Connect the technical work to real user/business benefits (e.g., "users can now...", "this means faster...", "developers will be able to...").
+4. Sentence 3: Include bold activity numbers — **{total_commits}** commits, **{total_prs}** merged PRs across **{total_repos}** repositories.
+5. Do NOT use bullet points, headers, or meta commentary. Output only the 3 sentences.
+6. Output in English only.
 
-[Data]
+[Activity Data]
 Date Range: {date_label}
 Total commits: {total_commits}
 Merged PRs: {total_prs}
