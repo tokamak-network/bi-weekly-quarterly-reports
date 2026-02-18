@@ -276,7 +276,7 @@ def get_model_timeout(model: Optional[str]) -> int:
     if lowered.startswith("deepseek"):
         return max(10, min(base, 25))
     if lowered.startswith("gpt-5"):
-        return max(15, min(base, 35))
+        return 60
     return base
 
 
