@@ -157,7 +157,7 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
 
 DEFAULT_TOKAMAK_BASE_URL = "https://api.ai.tokamak.network"
 DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
-DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex"]
+DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex", "deepseek-v3.2", "deepseek-chat", "gemini-3-pro", "gemini-3-flash"]
 DEFAULT_TOKAMAK_TIMEOUT = 30
 MAX_AI_REPO_LIMIT = 20
 
@@ -323,12 +323,15 @@ def get_model_timeout(model: Optional[str]) -> int:
     if not model:
         return base
     lowered = model.lower()
+    # Give all models reasonable base timeouts for complex tasks
     if lowered.startswith("gemini"):
-        return max(10, min(base, 20))
+        return max(30, base)
     if lowered.startswith("deepseek"):
-        return max(10, min(base, 25))
+        return max(40, base)
     if lowered.startswith("gpt-5"):
         return 60
+    if lowered.startswith("qwen") or lowered.startswith("grok"):
+        return max(45, base)
     return base
 
 
@@ -2947,7 +2950,7 @@ IMPORTANT:
 - Output ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include any text before or after the JSON.
 - Start your response with the opening brace {{ and end with the closing brace }}."""
 
-    review_timeout = max(get_model_timeout(selected_model) * 3, 180)
+    review_timeout = max(get_model_timeout(selected_model) * 4, 240)
     # Use higher token budget for reviews with original_text/revised_text fields
     review_max_tokens = 4500
     llm_errors: List[str] = []
@@ -3253,7 +3256,8 @@ You are a senior technical writer at a blockchain company. Your task is to impro
 [Improved Report]"""
 
     # Improvement rewrites the entire report — needs higher token budget and extended timeout
-    improve_timeout = max(get_model_timeout(selected_model) * 3, 180)
+    # Use 5 minutes minimum to handle slower models
+    improve_timeout = max(get_model_timeout(selected_model) * 4, 300)
     improve_max_tokens = 6000
     improved = generate_with_llm(prompt, max_tokens=improve_max_tokens, model=selected_model, timeout_override=improve_timeout)
 
@@ -3334,15 +3338,16 @@ async def generate_podcast_audio(
             "error": "OpenAI library not available"
         })
 
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("TOKAMAK_API_KEY")
+    api_key = os.getenv("TOKAMAK_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
         return JSONResponse({
             "success": False,
-            "error": "OpenAI API key not configured. Set OPENAI_API_KEY or TOKAMAK_API_KEY environment variable."
+            "error": "API key not configured. Set TOKAMAK_API_KEY environment variable."
         })
 
     try:
-        client = OpenAI(api_key=api_key)
+        # Use Tokamak API endpoint for TTS
+        client = OpenAI(base_url=get_tokamak_base_url(), api_key=api_key)
 
         # Parse script into speaker segments
         lines = script.strip().split('\n')

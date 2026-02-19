@@ -50,6 +50,21 @@ interface ReportSection {
   content: string
 }
 
+interface ReviewHistoryEntry {
+  id: string
+  timestamp: string
+  dateRange: { start: string; end: string }
+  model: string
+  reviews: Array<{
+    reviewer_level: number
+    reviewer_ko: string
+    score: number
+  }>
+  avgScore: number
+  report: string
+  improvedReport?: string
+}
+
 /* ------------------------------------------------------------------ */
 /* Constants                                                           */
 /* ------------------------------------------------------------------ */
@@ -117,6 +132,10 @@ const DEFAULT_MODEL_OPTIONS = [
   'gpt-5.2-pro',
   'gpt-5.2',
   'gpt-5.2-codex',
+  'deepseek-v3.2',
+  'deepseek-chat',
+  'gemini-3-pro',
+  'gemini-3-flash',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
@@ -309,6 +328,8 @@ export default function Home() {
   const [postScores, setPostScores] = useState<Record<number, number>>({})
   const [reReviewing, setReReviewing] = useState(false)
   const [copiedMedium, setCopiedMedium] = useState(false)
+  const [editingPublish, setEditingPublish] = useState(false)
+  const [editablePublishText, setEditablePublishText] = useState('')
   const reportContentRef = useRef<HTMLDivElement>(null)
 
   // Podcast state
@@ -318,6 +339,10 @@ export default function Home() {
   const [generatingAudio, setGeneratingAudio] = useState(false)
   const [podcastError, setPodcastError] = useState<string | null>(null)
   const [availableModels, setAvailableModels] = useState<string[]>(DEFAULT_MODEL_OPTIONS)
+
+  // Review history state
+  const [reviewHistory, setReviewHistory] = useState<ReviewHistoryEntry[]>([])
+  const [showHistory, setShowHistory] = useState(false)
 
   // Fetch available models from server on mount
   useEffect(() => {
@@ -332,6 +357,98 @@ export default function Home() {
         // Keep default models on error
       })
   }, [])
+
+  // Load review history from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('reviewHistory')
+      if (saved) {
+        setReviewHistory(JSON.parse(saved))
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
+
+  // Save current review to history
+  const saveToHistory = useCallback(() => {
+    if (!dateRange?.start || !dateRange?.end || reviews.length === 0) return
+
+    const entry: ReviewHistoryEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      dateRange: { start: dateRange.start, end: dateRange.end },
+      model: selectedModel,
+      reviews: reviews.map(r => ({
+        reviewer_level: r.reviewer_level,
+        reviewer_ko: r.reviewer_ko,
+        score: r.review.overall_score,
+      })),
+      avgScore: reviews.reduce((sum, r) => sum + r.review.overall_score, 0) / reviews.length,
+      report: fullReport ?? rawMarkdown,
+      improvedReport: improvedReport ?? undefined,
+    }
+
+    setReviewHistory(prev => {
+      // Check if this exact entry already exists (same timestamp within 1 minute)
+      const isDuplicate = prev.some(h =>
+        h.dateRange.start === entry.dateRange.start &&
+        h.dateRange.end === entry.dateRange.end &&
+        h.model === entry.model &&
+        Math.abs(new Date(h.timestamp).getTime() - new Date(entry.timestamp).getTime()) < 60000
+      )
+      if (isDuplicate) return prev
+
+      const updated = [entry, ...prev].slice(0, 50) // Keep last 50 entries
+      localStorage.setItem('reviewHistory', JSON.stringify(updated))
+      return updated
+    })
+  }, [dateRange, reviews, selectedModel, fullReport, rawMarkdown, improvedReport])
+
+  // Get history entries matching current date range
+  const matchingHistory = useMemo(() => {
+    if (!dateRange?.start || !dateRange?.end) return []
+    return reviewHistory.filter(
+      h => h.dateRange.start === dateRange.start && h.dateRange.end === dateRange.end
+    )
+  }, [reviewHistory, dateRange])
+
+  // Load a history entry
+  const loadHistoryEntry = (entry: ReviewHistoryEntry) => {
+    setFullReport(entry.report)
+    setRawMarkdown(entry.report)
+    if (entry.improvedReport) {
+      setImprovedReport(entry.improvedReport)
+      setViewMode('improved')
+    } else {
+      setImprovedReport(null)
+      setViewMode('original')
+    }
+    setShowHistory(false)
+  }
+
+  // Delete a history entry
+  const deleteHistoryEntry = (id: string) => {
+    setReviewHistory(prev => {
+      const updated = prev.filter(h => h.id !== id)
+      localStorage.setItem('reviewHistory', JSON.stringify(updated))
+      return updated
+    })
+  }
+
+  // Auto-save to history when proceeding to publish or when improved report is generated
+  useEffect(() => {
+    if (step === 3 && reviews.length > 0) {
+      saveToHistory()
+    }
+  }, [step, saveToHistory, reviews.length])
+
+  // Also save when improved report is generated
+  useEffect(() => {
+    if (improvedReport && reviews.length > 0) {
+      saveToHistory()
+    }
+  }, [improvedReport, saveToHistory, reviews.length])
 
   /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
@@ -749,7 +866,7 @@ export default function Home() {
       formData.append('model', selectedModel)
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 240000) // 4-minute timeout
+      const timeoutId = setTimeout(() => controller.abort(), 360000) // 6-minute timeout for slower models
 
       const response = await fetch('http://localhost:8000/api/improve', {
         method: 'POST',
@@ -804,7 +921,7 @@ export default function Home() {
       }
     } catch (error) {
       const msg = error instanceof Error && error.name === 'AbortError'
-        ? 'Improvement timed out (4 min). Try a shorter report or different model.'
+        ? 'Improvement timed out (6 min). Try a shorter report or different model.'
         : `Improve failed: ${error instanceof Error ? error.message : 'Network error'}`
       setImproveError(msg)
       console.error('Improve failed:', error)
@@ -936,12 +1053,11 @@ export default function Home() {
 
   const convertToMediumFormat = (md: string): string => {
     return md
-      // Remove header markers (# ## ### ####) - keep text only
-      .replace(/^#{1,4}\s+(.+)$/gm, '$1')
-      // Remove bold markers (**text**) - keep text only
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      // Convert header markers (# ## ### ####) to bold text for Medium
+      .replace(/^#{1,4}\s+(.+)$/gm, '**$1**')
+      // Keep bold markers (**text**) - Medium supports these
       // Remove italic markers (*text* or _text_) - keep text only
-      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '$1')
       .replace(/_([^_]+)_/g, '$1')
       // Convert markdown links [text](url) to "text (url)"
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
@@ -1313,7 +1429,26 @@ export default function Home() {
 
   if (step === 3) {
     const finalReport = improvedReport ?? fullReport ?? rawMarkdown
-    const mediumContent = convertToMediumFormat(finalReport)
+    const baseMediumContent = convertToMediumFormat(finalReport)
+    const mediumContent = editingPublish ? editablePublishText : baseMediumContent
+
+    // Render medium content with bold support
+    const renderMediumContent = (text: string) => {
+      return text.split('\n').map((line, i) => {
+        // Replace **text** with bold spans
+        const parts = line.split(/(\*\*[^*]+\*\*)/g)
+        return (
+          <div key={i} className={line.trim() === '' ? 'h-4' : ''}>
+            {parts.map((part, j) => {
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return <strong key={j} className="font-bold">{part.slice(2, -2)}</strong>
+              }
+              return <span key={j}>{part}</span>
+            })}
+          </div>
+        )
+      })
+    }
 
     return (
       <div className="min-h-screen tokamak-grid text-gray-900">
@@ -1361,6 +1496,35 @@ export default function Home() {
                     <span className="text-[11px] text-gray-400">
                       {mediumContent.split('\n').length} lines
                     </span>
+                    {!editingPublish ? (
+                      <button
+                        onClick={() => {
+                          setEditablePublishText(baseMediumContent)
+                          setEditingPublish(true)
+                        }}
+                        className="rounded-full border border-gray-300 px-3 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 transition"
+                      >
+                        Edit
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setEditingPublish(false)}
+                          className="rounded-full bg-emerald-600 px-3 py-1 text-[10px] font-semibold text-white hover:bg-emerald-700 transition"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditablePublishText(baseMediumContent)
+                            setEditingPublish(false)
+                          }}
+                          className="rounded-full border border-gray-300 px-3 py-1 text-[10px] font-medium text-gray-600 hover:bg-gray-50 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1370,17 +1534,25 @@ export default function Home() {
                       {copiedMedium ? 'Copied!' : 'COPY FOR MEDIUM'}
                     </button>
                     <button
-                      onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.txt`)}
+                      onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.md`)}
                       className="rounded-full border border-gray-300 bg-white px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
                     >
-                      Download .txt
+                      Download .md
                     </button>
                   </div>
                 </div>
                 <div className="max-h-[calc(100vh-280px)] overflow-y-auto p-8">
-                  <div className="prose max-w-none text-base leading-8 text-gray-800 whitespace-pre-wrap font-serif">
-                    {mediumContent}
-                  </div>
+                  {editingPublish ? (
+                    <textarea
+                      value={editablePublishText}
+                      onChange={(e) => setEditablePublishText(e.target.value)}
+                      className="w-full h-[500px] text-base leading-8 text-gray-800 font-serif border border-gray-200 rounded-lg p-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <div className="prose max-w-none text-base leading-8 text-gray-800 font-serif">
+                      {renderMediumContent(mediumContent)}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1401,12 +1573,12 @@ export default function Home() {
                     </ol>
                   </div>
                   <div className="rounded-lg bg-gray-50 p-3">
-                    <div className="font-semibold text-gray-700 mb-1">Format (Clean Text)</div>
+                    <div className="font-semibold text-gray-700 mb-1">Format</div>
                     <ul className="space-y-1">
-                      <li>&#x2022; All markdown symbols removed</li>
-                      <li>&#x2022; Headers as plain text</li>
+                      <li>&#x2022; Headers converted to <strong>bold</strong></li>
                       <li>&#x2022; Bullet points use • format</li>
                       <li>&#x2022; Links shown as text (URL)</li>
+                      <li>&#x2022; Clean, paste-ready formatting</li>
                     </ul>
                   </div>
                 </div>
@@ -1458,117 +1630,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Download options */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-900">Download Options</h3>
-                <div className="mt-3 space-y-2">
-                  <button
-                    onClick={() => handleDownload(finalReport, `report-final-${dateRange?.start ?? 'draft'}.md`)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition text-left"
-                  >
-                    Download Markdown (.md)
-                  </button>
-                  <button
-                    onClick={() => handleDownload(mediumContent, `medium-report-${dateRange?.start ?? 'draft'}.txt`)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition text-left"
-                  >
-                    Download Medium format (.txt)
-                  </button>
-                </div>
-              </div>
-
-              {/* Podcast Generation */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-900">Podcast Summary</h3>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Generate a 3-5 min audio summary with two hosts discussing the report highlights.
-                </p>
-
-                <div className="mt-3 space-y-2">
-                  {!podcastAudio && (
-                    <button
-                      onClick={handleGeneratePodcast}
-                      disabled={generatingScript || generatingAudio}
-                      className="w-full rounded-lg bg-purple-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-purple-700 transition disabled:opacity-50"
-                    >
-                      {generatingScript ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Generating script...
-                        </span>
-                      ) : generatingAudio ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Creating audio...
-                        </span>
-                      ) : (
-                        '🎙️ Generate Podcast'
-                      )}
-                    </button>
-                  )}
-
-                  {podcastError && (
-                    <div className="rounded-lg bg-red-50 border border-red-200 p-2">
-                      <p className="text-[10px] text-red-600">{podcastError}</p>
-                    </div>
-                  )}
-
-                  {podcastAudio && (
-                    <div className="space-y-2">
-                      <div className="rounded-lg bg-purple-50 border border-purple-200 p-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-purple-700">
-                          <span>🎧</span> Podcast ready!
-                        </div>
-                        <audio
-                          controls
-                          className="w-full mt-2 h-8"
-                          src={`data:audio/mp3;base64,${podcastAudio}`}
-                        />
-                      </div>
-
-                      <button
-                        onClick={handleDownloadPodcast}
-                        className="w-full rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition"
-                      >
-                        Download Podcast (.mp3)
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const reportTitle = dateRange?.start
-                            ? `Tokamak Network Biweekly Report (${dateRange.start})`
-                            : 'Tokamak Network Biweekly Report'
-                          const tweetText = `🎙️ New podcast episode! Listen to our ${reportTitle} audio summary.\n\n#TokamakNetwork #L2 #Ethereum #Blockchain`
-                          const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
-                          window.open(xUrl, '_blank', 'width=550,height=420')
-                        }}
-                        className="w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 transition flex items-center justify-center gap-2"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                        </svg>
-                        Share to X
-                      </button>
-
-                      <button
-                        onClick={() => { setPodcastAudio(null); setPodcastScript(null); }}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
-                      >
-                        Generate New Podcast
-                      </button>
-                    </div>
-                  )}
-
-                  {podcastScript && !podcastAudio && !generatingAudio && (
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <div className="text-[10px] font-semibold text-gray-600 mb-1">Script Preview</div>
-                      <div className="text-[9px] text-gray-500 max-h-20 overflow-y-auto whitespace-pre-wrap">
-                        {podcastScript.slice(0, 500)}...
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
           </div>
         </main>
@@ -1592,7 +1653,19 @@ export default function Home() {
             >
               ← Back to Generator
             </button>
-            <h1 className="text-3xl font-light tracking-tight text-gray-900">REVIEW &amp; IMPROVE</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-light tracking-tight text-gray-900">REVIEW &amp; IMPROVE</h1>
+              {matchingHistory.length > 0 && (
+                <button
+                  onClick={() => setShowHistory(!showHistory)}
+                  className={`rounded-full px-3 py-1 text-[10px] font-semibold transition ${
+                    showHistory ? 'bg-violet-600 text-white' : 'bg-violet-100 text-violet-700 hover:bg-violet-200'
+                  }`}
+                >
+                  History ({matchingHistory.length})
+                </button>
+              )}
+            </div>
             <p className="mt-2 text-sm text-gray-500">{metaText}</p>
           </div>
           {/* Step indicator */}
@@ -1610,6 +1683,85 @@ export default function Home() {
             </span>
           </div>
         </div>
+
+        {/* History Panel */}
+        {showHistory && matchingHistory.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-violet-200 bg-violet-50 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-violet-900">
+                Review History for {dateRange?.start} ~ {dateRange?.end}
+              </h3>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-violet-400 hover:text-violet-600 text-xs"
+              >
+                Close
+              </button>
+            </div>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {matchingHistory.map((entry) => {
+                const date = new Date(entry.timestamp)
+                const timeStr = date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                return (
+                  <div
+                    key={entry.id}
+                    className="flex items-center justify-between rounded-xl bg-white border border-violet-100 p-3 hover:border-violet-300 transition"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-800">{entry.model}</span>
+                          <span className="text-[10px] text-gray-400">{timeStr}</span>
+                          {entry.improvedReport && (
+                            <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
+                              Improved
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          {entry.reviews.map((r) => {
+                            const reviewer = REVIEWERS.find(rv => rv.level === r.reviewer_level)
+                            return (
+                              <span
+                                key={r.reviewer_level}
+                                className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${reviewer?.badge ?? 'bg-gray-100 text-gray-600'}`}
+                              >
+                                {r.reviewer_ko}: {r.score}/10
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-violet-700">{entry.avgScore.toFixed(1)}</div>
+                        <div className="text-[9px] text-gray-400">avg score</div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => loadHistoryEntry(entry)}
+                          className="rounded-lg bg-violet-600 px-3 py-1.5 text-[10px] font-semibold text-white hover:bg-violet-700 transition"
+                        >
+                          Load
+                        </button>
+                        <button
+                          onClick={() => deleteHistoryEntry(entry.id)}
+                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-[10px] font-medium text-gray-400 hover:text-red-500 hover:border-red-200 transition"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-[10px] text-violet-600">
+              Compare past reviews with different models to choose the best report.
+            </p>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           {/* Left: Expanded Report View */}
@@ -1800,23 +1952,23 @@ export default function Home() {
                     <div key={reviewer.level} className={`rounded-xl border transition ${result ? reviewer.border : 'border-gray-200'}`}>
                       {/* Card header */}
                       <div
-                        className={`flex items-center justify-between px-4 py-3 cursor-pointer rounded-xl transition ${
+                        className={`flex items-center justify-between gap-4 px-4 py-3 cursor-pointer rounded-xl transition ${
                           result ? reviewer.bg : 'hover:bg-gray-50'
                         }`}
                         onClick={() => setExpandedReview(isExpanded ? null : reviewer.level)}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`h-2.5 w-2.5 rounded-full ${result ? reviewer.dot : 'bg-gray-300'}`} />
-                          <div>
-                            <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`h-2.5 w-2.5 rounded-full shrink-0 ${result ? reviewer.dot : 'bg-gray-300'}`} />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-semibold text-gray-800">{reviewer.name_ko}</span>
                               <span className="text-[10px] text-gray-400">{reviewer.name}</span>
-                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium ${reviewer.badge}`}>Lv.{reviewer.level}</span>
+                              <span className={`rounded px-1.5 py-0.5 text-[9px] font-medium shrink-0 ${reviewer.badge}`}>Lv.{reviewer.level}</span>
                             </div>
                             <p className="text-[10px] text-gray-500 mt-0.5">{reviewer.description}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                           {result && (
                             <span className={`text-sm font-bold ${scoreColor(result.review.overall_score)}`}>
                               {result.review.overall_score}/10
