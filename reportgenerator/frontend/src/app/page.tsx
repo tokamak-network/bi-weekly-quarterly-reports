@@ -112,12 +112,11 @@ const REVIEWERS = [
   },
 ]
 
-const MODEL_OPTIONS = [
+// Default models - will be updated from server if available
+const DEFAULT_MODEL_OPTIONS = [
   'gpt-5.2-pro',
-  'gpt-5.2-mini',
-  'gemini-3-pro',
-  'gemini-3-flash',
-  'deepseek-v3',
+  'gpt-5.2',
+  'gpt-5.2-codex',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
@@ -318,6 +317,21 @@ export default function Home() {
   const [generatingScript, setGeneratingScript] = useState(false)
   const [generatingAudio, setGeneratingAudio] = useState(false)
   const [podcastError, setPodcastError] = useState<string | null>(null)
+  const [availableModels, setAvailableModels] = useState<string[]>(DEFAULT_MODEL_OPTIONS)
+
+  // Fetch available models from server on mount
+  useEffect(() => {
+    fetch('http://localhost:8000/api/health')
+      .then(res => res.json())
+      .then(data => {
+        if (data.tokamak_models && data.tokamak_models.length > 0) {
+          setAvailableModels(data.tokamak_models)
+        }
+      })
+      .catch(() => {
+        // Keep default models on error
+      })
+  }, [])
 
   /* ---- Derived values ---- */
   const detectedDays = useMemo(() => {
@@ -338,7 +352,7 @@ export default function Home() {
     return `${range}  |  ${stats.commits} commits  |  ${stats.repos} repos`
   }, [generated, stats, dateRange])
 
-  const modelCandidateList = [...MODEL_OPTIONS]
+  const modelCandidateList = [...availableModels]
   const exportContent = improvedReport ?? fullReport ?? rawMarkdown
 
   const originalReport = fullReport ?? rawMarkdown
