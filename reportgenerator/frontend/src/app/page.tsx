@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { CalendarDays, Upload } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
+import dynamic from 'next/dynamic'
+
+// Dynamic import for VisualReport to avoid SSR issues with recharts
+const VisualReport = dynamic(() => import('./VisualReport'), { ssr: false })
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -298,7 +302,16 @@ export default function Home() {
   const [rawMarkdown, setRawMarkdown] = useState(SAMPLE_MARKDOWN)
   const [highlight, setHighlight] = useState('')
   const [sections, setSections] = useState<ReportSection[]>([])
-  const [stats, setStats] = useState<{ commits: number; repos: number; prs: number } | null>(null)
+  const [stats, setStats] = useState<{
+    commits: number
+    repos: number
+    prs: number
+    linesAdded?: number
+    linesDeleted?: number
+    totalChanges?: number
+    netChange?: number
+    contributors?: number
+  } | null>(null)
   const [dateRange, setDateRange] = useState<{ start: string | null; end: string | null; days: number | null } | null>(null)
   const [reportTitle, setReportTitle] = useState<string | null>(null)
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
@@ -315,8 +328,10 @@ export default function Home() {
   const [improveError, setImproveError] = useState<string | null>(null)
   const [improvedReport, setImprovedReport] = useState<string | null>(null)
   const [copiedFinal, setCopiedFinal] = useState(false)
-  const [viewMode, setViewMode] = useState<'original' | 'improved' | 'diff'>('original')
+  const [viewMode, setViewMode] = useState<'original' | 'improved' | 'diff' | 'visual'>('original')
   const [editingReport, setEditingReport] = useState(false)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [reportSummaries, setReportSummaries] = useState<Record<string, any>>({})
   const [editableText, setEditableText] = useState('')
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [highlightedText, setHighlightedText] = useState<string | null>(null)
@@ -562,15 +577,26 @@ export default function Home() {
           ? { applied: Boolean(data.repo_limit_applied), total: data.repo_count_total ?? 0, shown: data.repo_count_shown ?? 0 }
           : null,
       )
-      setStats({ commits: data.stats?.total_commits ?? 0, repos: data.stats?.total_repos ?? 0, prs: data.stats?.total_prs ?? 0 })
+      setStats({
+        commits: data.stats?.total_commits ?? 0,
+        repos: data.stats?.total_repos ?? 0,
+        prs: data.stats?.total_prs ?? 0,
+        linesAdded: data.stats?.total_lines_added ?? 0,
+        linesDeleted: data.stats?.total_lines_deleted ?? 0,
+        totalChanges: data.stats?.total_changes ?? 0,
+        netChange: data.stats?.net_change ?? 0,
+        contributors: data.stats?.total_contributors ?? 0,
+      })
       setDateRange(data.date_range || null)
+      setReportSummaries(data.summaries || {})
       setGenerated(true)
       setActiveView('preview')
 
       // Reset review state
       setReviews([])
       setImprovedReport(null)
-      setViewMode('original')
+      // Default to visual mode for comprehensive format
+      setViewMode(reportFormat === 'comprehensive' ? 'visual' : 'original')
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : 'Failed to generate report')
     } finally {
@@ -1788,11 +1814,20 @@ export default function Home() {
                   {reportType}
                 </span>
                 <div className="flex items-center gap-1 ml-2">
+                  {/* Visual mode for comprehensive reports */}
+                  {reportFormat === 'comprehensive' && Object.keys(reportSummaries).length > 0 && (
+                    <button
+                      onClick={() => { setViewMode('visual'); setEditingReport(false) }}
+                      className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'visual' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      Visual
+                    </button>
+                  )}
                   <button
                     onClick={() => { setViewMode('original'); setEditingReport(false) }}
                     className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'original' && !editingReport ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600'}`}
                   >
-                    Original
+                    {reportFormat === 'comprehensive' ? 'Markdown' : 'Original'}
                   </button>
                   <button
                     onClick={() => {
@@ -1896,7 +1931,27 @@ export default function Home() {
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div ref={reportContentRef} className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
-                {editingReport ? (
+                {viewMode === 'visual' && Object.keys(reportSummaries).length > 0 && stats && dateRange ? (
+                  <VisualReport
+                    stats={{
+                      total_commits: stats.commits,
+                      total_prs: stats.prs,
+                      total_repos: stats.repos,
+                      total_lines_added: stats.linesAdded ?? 0,
+                      total_lines_deleted: stats.linesDeleted ?? 0,
+                      total_changes: stats.totalChanges ?? 0,
+                      net_change: stats.netChange ?? 0,
+                      total_contributors: stats.contributors ?? 0,
+                    }}
+                    dateRange={{
+                      start: dateRange.start ?? '',
+                      end: dateRange.end ?? '',
+                      days: dateRange.days ?? 0,
+                    }}
+                    summaries={reportSummaries}
+                    sections={sections}
+                  />
+                ) : editingReport ? (
                   <textarea
                     value={editableText}
                     onChange={(e) => setEditableText(e.target.value)}
