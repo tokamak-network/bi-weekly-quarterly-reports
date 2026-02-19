@@ -283,7 +283,7 @@ export default function Home() {
   const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
-  const [reportFormat, setReportFormat] = useState<'concise' | 'structured'>('concise')
+  const [reportFormat, setReportFormat] = useState<'comprehensive' | 'concise' | 'structured'>('comprehensive')
   const [repoLimit, setRepoLimit] = useState('0')
   const [activeView, setActiveView] = useState<'preview' | 'raw'>('preview')
   const [loading, setLoading] = useState(false)
@@ -1301,30 +1301,34 @@ export default function Home() {
                           <p className="mt-1 text-xs text-gray-500">Choose output structure for each section.</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {(['concise', 'structured'] as const).map((f) => (
+                          {(['comprehensive', 'concise', 'structured'] as const).map((f) => (
                             <button
                               key={f}
                               onClick={() => setReportFormat(f)}
                               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                                 reportFormat === f
-                                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                  ? f === 'comprehensive'
+                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                    : 'border-blue-600 bg-blue-50 text-blue-700'
                                   : 'border-gray-200 text-gray-500 hover:border-gray-300'
                               }`}
                             >
-                              {f === 'concise' ? 'A: Concise' : 'B: Structured'}
+                              {f === 'comprehensive' ? 'Comprehensive' : f === 'concise' ? 'Concise' : 'Structured'}
                             </button>
                           ))}
                         </div>
                       </div>
                       <div className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
-                        {reportFormat === 'concise'
+                        {reportFormat === 'comprehensive'
+                          ? '📊 Full detailed report: ALL repositories included with statistics, goals, accomplishments, and GitHub links. Best for investors.'
+                          : reportFormat === 'concise'
                           ? 'Format A: One-liner intro → 5 bullet points with bold titles. Compact and scannable.'
                           : 'Format B: Title → Intro paragraph → "Key Accomplishments" header → 5 bullet points. More context and structure.'}
                       </div>
                     </div>
                   )}
-                  {/* Repo limit */}
-                  {reportGrouping === 'repository' && (
+                  {/* Repo limit - hidden for comprehensive mode which includes all repos */}
+                  {reportGrouping === 'repository' && reportFormat !== 'comprehensive' && (
                     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
                       <div>
                         <div className="text-sm font-medium text-gray-800">Repository limit</div>
@@ -1342,6 +1346,15 @@ export default function Home() {
                         onChange={(e) => setRepoLimit(e.target.value)}
                         className="w-20 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 focus:outline-none"
                       />
+                    </div>
+                  )}
+                  {/* Info for comprehensive mode */}
+                  {reportGrouping === 'repository' && reportFormat === 'comprehensive' && (
+                    <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3">
+                      <div className="text-sm font-medium text-violet-800">All repositories included</div>
+                      <p className="mt-1 text-xs text-violet-600">
+                        Comprehensive mode includes ALL active repositories with detailed statistics and GitHub links.
+                      </p>
                     </div>
                   )}
                 </div>

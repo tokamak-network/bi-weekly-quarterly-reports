@@ -160,6 +160,10 @@ DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
 DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex", "deepseek-v3.2", "deepseek-chat", "gemini-3-pro", "gemini-3-flash"]
 DEFAULT_TOKAMAK_TIMEOUT = 30
 MAX_AI_REPO_LIMIT = 20
+MAX_COMPREHENSIVE_REPO_LIMIT = 100  # No practical limit for comprehensive mode
+
+# GitHub organization URL for generating repo links
+GITHUB_ORG_URL = "https://github.com/tokamak-network"
 
 REVIEWER_PERSONAS = [
     {
@@ -839,6 +843,19 @@ def prepare_summary(project: str, data: Dict[str, Any]) -> dict:
 
     commits_sorted = sorted(commits, key=lambda x: x['additions'] + x['deletions'], reverse=True)
 
+    # Calculate total lines added/deleted
+    total_additions = sum(c.get('additions', 0) for c in commits)
+    total_deletions = sum(c.get('deletions', 0) for c in commits)
+    total_changes = total_additions + total_deletions
+    net_change = total_additions - total_deletions
+
+    # Count unique contributors
+    contributors = set()
+    for c in commits:
+        author = c.get('author', '')
+        if author:
+            contributors.add(author)
+
     seen = set()
     top_commits = []
     for c in commits_sorted:
@@ -859,6 +876,13 @@ def prepare_summary(project: str, data: Dict[str, Any]) -> dict:
         "merged_prs": len(merged_prs),
         "top_commits": top_commits,
         "merged_pr_list": merged_prs[:15],
+        "lines_added": total_additions,
+        "lines_deleted": total_deletions,
+        "total_changes": total_changes,
+        "net_change": net_change,
+        "contributors": list(contributors),
+        "contributor_count": len(contributors),
+        "github_url": f"{GITHUB_ORG_URL}/{project}" if project and project != "Other repos" else None,
     }
 
 
@@ -2047,6 +2071,232 @@ def _format_instructions_structured() -> str:
 6. Do NOT include a closing/summary paragraph."""
 
 
+def _format_instructions_comprehensive() -> str:
+    """Format C (Comprehensive): Full detailed analysis per repository."""
+    return """[Output Format: Comprehensive (Format C)]
+
+Generate a detailed, impactful report section for this repository. This report is for investors and stakeholders who want to understand the FULL scope of work.
+
+Structure your output EXACTLY as follows:
+
+## [Repository Name]
+
+**GitHub**: [Will be added automatically]
+
+### Overview
+Write 2-3 sentences explaining what this repository/project is, its purpose in the Tokamak ecosystem, and why it matters to users and investors.
+
+### Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | [number] |
+| Contributors | [number] |
+| Lines Added | +[number] |
+| Lines Deleted | -[number] |
+| Net Change | [+/-number] |
+
+### Period Goals
+Describe in 2-3 sentences what the team aimed to accomplish during this reporting period. What were the key objectives?
+
+### Key Accomplishments
+List ALL significant work done. Each bullet should:
+- Start with a strong action verb
+- Explain the technical change AND its user/business impact
+- Be detailed enough that investors understand the value
+
+Use this format:
+* **[Action Phrase]**: [Detailed explanation of what was done and why it matters]
+
+Include at least 5-10 bullets covering all major work.
+
+### Code Analysis
+Explain what the lines added/deleted represent:
+- What new features or capabilities were added?
+- What was optimized, refactored, or cleaned up?
+- What does this indicate about the project's maturity?
+
+### Next Steps
+Briefly mention what's planned next for this repository (1-2 sentences).
+
+---"""
+
+
+def generate_comprehensive_headline(all_summaries: dict, date_range: dict, model: Optional[str] = None) -> str:
+    """Generate an impactful headline/executive summary for the comprehensive report."""
+    total_commits = sum(s.get('total_commits', 0) for s in all_summaries.values())
+    total_additions = sum(s.get('lines_added', 0) for s in all_summaries.values())
+    total_deletions = sum(s.get('lines_deleted', 0) for s in all_summaries.values())
+    total_changes = total_additions + total_deletions
+    net_change = total_additions - total_deletions
+    total_repos = len(all_summaries)
+    total_contributors = len(set(c for s in all_summaries.values() for c in s.get('contributors', [])))
+
+    # Format large numbers with commas
+    def fmt(n: int) -> str:
+        return f"{n:,}"
+
+    prompt = f"""You are writing the HEADLINE section of an executive report for Tokamak Network.
+
+This report covers {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}.
+
+KEY STATISTICS:
+- Total Repositories Active: {total_repos}
+- Total Commits: {fmt(total_commits)}
+- Total Contributors: {total_contributors}
+- Lines Added: +{fmt(total_additions)}
+- Lines Deleted: -{fmt(total_deletions)}
+- Net Change: {'+' if net_change >= 0 else ''}{fmt(net_change)}
+- Total Code Changes: {fmt(total_changes)}
+
+Generate a HEADLINE section that creates IMPACT. Think of this as the front page of a financial newspaper.
+
+Output format:
+1. A bold, attention-grabbing headline (1 line)
+2. A subheadline expanding on the headline (1 line)
+3. An executive summary paragraph (3-4 sentences) explaining what these numbers mean and why investors should be excited
+
+Example tone:
+"🚀 Tokamak Network: 4.9 Million Lines of Code Transformed in 14 Days"
+"73 Repositories, 287 Contributors Drive Massive Infrastructure Expansion"
+
+Make the numbers PROMINENT and the implications CLEAR. This should make investors want to read more."""
+
+    if not has_tokamak_client(model):
+        # Fallback to basic headline
+        return f"""# Tokamak Network Development Report
+
+**{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**
+
+## Executive Summary
+
+| Metric | Value |
+|--------|-------|
+| Active Repositories | {total_repos} |
+| Total Commits | {fmt(total_commits)} |
+| Contributors | {total_contributors} |
+| Lines Added | +{fmt(total_additions)} |
+| Lines Deleted | -{fmt(total_deletions)} |
+| Net Change | {'+' if net_change >= 0 else ''}{fmt(net_change)} |
+| Total Changes | {fmt(total_changes)} |
+
+---
+
+"""
+
+    response = generate_with_llm(prompt, max_tokens=800, model=model)
+    if response:
+        return f"# Tokamak Network Development Report\n\n**{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**\n\n{response}\n\n---\n\n"
+    return f"# Tokamak Network Development Report\n\n**{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**\n\n---\n\n"
+
+
+def generate_with_ai_comprehensive(project: str, summary: dict, info: dict, model: Optional[str] = None) -> str:
+    """Generate comprehensive detailed section for a repository."""
+    if not has_tokamak_client(model):
+        return generate_basic_comprehensive(project, summary, info)
+
+    commit_list = "\n".join([
+        f"- {sanitize_initial_commit(c['message'], c.get('repo'), False)} (+{c.get('additions', 0)}/-{c.get('deletions', 0)})"
+        for c in summary['top_commits'][:20]
+    ])
+
+    pr_list = "\n".join([
+        f"- PR#{p['pr_number']}: {sanitize_initial_commit(p['title'], p.get('repo'), False)}"
+        for p in summary.get('merged_pr_list', [])[:10]
+    ])
+
+    github_url = summary.get('github_url', f"{GITHUB_ORG_URL}/{project}")
+    lines_added = summary.get('lines_added', 0)
+    lines_deleted = summary.get('lines_deleted', 0)
+    total_commits = summary.get('total_commits', 0)
+    contributor_count = summary.get('contributor_count', 0)
+
+    format_instructions = _format_instructions_comprehensive()
+
+    prompt = f"""[Role]
+You are writing a COMPREHENSIVE report section for investors and stakeholders of Tokamak Network.
+This section covers ONE repository in detail. Be thorough, specific, and impactful.
+
+[Repository Information]
+Name: {project}
+GitHub URL: {github_url}
+Description: {info.get('context', REPO_DESCRIPTIONS.get(project, 'A Tokamak Network project'))}
+
+[Statistics for This Period]
+- Commits: {total_commits}
+- Contributors: {contributor_count}
+- Lines Added: +{lines_added:,}
+- Lines Deleted: -{lines_deleted:,}
+- Net Change: {'+' if lines_added >= lines_deleted else ''}{lines_added - lines_deleted:,}
+
+[Recent Commits]
+{commit_list if commit_list else 'No commit details available'}
+
+[Merged PRs]
+{pr_list if pr_list else 'No PR details available'}
+
+{format_instructions}
+
+[Writing Rules]
+1. Be DETAILED - investors want to understand the full scope of work
+2. Translate technical work into business value
+3. Make the statistics meaningful - explain what +{lines_added:,} lines of code represents
+4. Each accomplishment should show both WHAT was done and WHY it matters
+5. If lines_deleted is significant, explain it positively (optimization, cleanup, efficiency)
+6. Output in English only.
+7. DO NOT include the GitHub URL line - it will be added automatically.
+
+Generate the comprehensive section for {project}:"""
+
+    response = generate_with_llm(prompt, max_tokens=2000, model=model, timeout_override=180)
+    if response:
+        # Ensure GitHub link is included
+        if "**GitHub**:" not in response and github_url:
+            # Insert GitHub link after the repository title
+            lines = response.split('\n')
+            for i, line in enumerate(lines):
+                if line.startswith('## ') or line.startswith('# '):
+                    lines.insert(i + 1, f"\n**GitHub**: {github_url}\n")
+                    break
+            response = '\n'.join(lines)
+        return response + "\n\n"
+    return generate_basic_comprehensive(project, summary, info)
+
+
+def generate_basic_comprehensive(project: str, summary: dict, info: dict) -> str:
+    """Fallback comprehensive section without AI."""
+    github_url = summary.get('github_url', f"{GITHUB_ORG_URL}/{project}")
+    lines_added = summary.get('lines_added', 0)
+    lines_deleted = summary.get('lines_deleted', 0)
+    total_commits = summary.get('total_commits', 0)
+    contributor_count = summary.get('contributor_count', 0)
+    net_change = lines_added - lines_deleted
+
+    commits_text = ""
+    for c in summary.get('top_commits', [])[:10]:
+        msg = sanitize_initial_commit(c['message'], c.get('repo'), False)
+        commits_text += f"* {msg}\n"
+
+    return f"""## {project}
+
+**GitHub**: {github_url}
+
+### Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | {total_commits} |
+| Contributors | {contributor_count} |
+| Lines Added | +{lines_added:,} |
+| Lines Deleted | -{lines_deleted:,} |
+| Net Change | {'+' if net_change >= 0 else ''}{net_change:,} |
+
+### Key Work
+{commits_text if commits_text else '* Development activity recorded'}
+
+---
+
+"""
+
+
 def generate_with_ai_public(project: str, summary: dict, info: dict, model: Optional[str] = None, report_format: str = "concise") -> str:
     """Generate public section using Tokamak API."""
     if not has_tokamak_client(model):
@@ -2480,7 +2730,10 @@ async def generate_report(
         if report_grouping == "repository":
             effective_repo_limit = repo_limit
             forced_limit_applied = False
-            if use_ai:
+            # For comprehensive format, include ALL repositories (no limit)
+            if report_format == "comprehensive":
+                effective_repo_limit = 0  # 0 means no limit
+            elif use_ai:
                 if effective_repo_limit <= 0 or effective_repo_limit > MAX_AI_REPO_LIMIT:
                     effective_repo_limit = MAX_AI_REPO_LIMIT
                     forced_limit_applied = True
@@ -2594,14 +2847,25 @@ async def generate_report(
             # Parallel generation for repository sections
             def _gen_repo_section(repo_name_and_summary):
                 rn, sm = repo_name_and_summary
-                sm = trim_summary_for_ai(sm, 12, 6) if use_ai else sm
+                # For comprehensive format, keep more commits for detailed analysis
+                if report_format == "comprehensive":
+                    sm = trim_summary_for_ai(sm, 20, 10) if use_ai else sm
+                else:
+                    sm = trim_summary_for_ai(sm, 12, 6) if use_ai else sm
+
                 if report_type == "technical":
                     content = generate_repo_technical_section(rn, sm, section_use_ai, model=selected_model)
+                elif report_format == "comprehensive":
+                    # Use comprehensive generation for detailed reports
+                    info = {"context": REPO_DESCRIPTIONS.get(rn, ""), "title": rn}
+                    content = generate_with_ai_comprehensive(rn, sm, info, model=selected_model)
                 else:
                     content = generate_repo_public_section(rn, sm, section_use_ai, model=selected_model, report_format=report_format)
                 return {"project": rn, "title": rn, "content": content}
 
-            with ThreadPoolExecutor(max_workers=min(5, len(entries))) as executor:
+            # Use more workers for comprehensive to speed up large reports
+            max_workers = min(8, len(entries)) if report_format == "comprehensive" else min(5, len(entries))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 sections = list(executor.map(_gen_repo_section, entries))
         else:
             for project in project_keys:
@@ -2641,6 +2905,17 @@ async def generate_report(
                 highlight = generate_public_highlight(summaries, total_commits, total_prs, total_repos, scope)
             else:
                 highlight = generate_technical_highlight(summaries, total_commits, total_prs, total_repos)
+
+        # For comprehensive format, generate the full report with headline
+        if report_format == "comprehensive" and report_type == "public" and report_grouping == "repository":
+            comprehensive_headline = generate_comprehensive_headline(
+                summaries,
+                {"start": start_date, "end": end_date},
+                model=selected_model,
+            )
+            # Assemble full comprehensive report
+            section_contents = [s.get("content", "") for s in sections]
+            full_report = comprehensive_headline + "\n".join(section_contents)
 
         model_reports: Dict[str, Dict[str, Any]] = {}
         if use_ai and multi_model:
@@ -2755,6 +3030,11 @@ async def generate_report(
                 "total_commits": total_commits,
                 "total_prs": total_prs,
                 "total_repos": total_repos,
+                "total_lines_added": sum(s.get('lines_added', 0) for s in summaries.values()),
+                "total_lines_deleted": sum(s.get('lines_deleted', 0) for s in summaries.values()),
+                "total_changes": sum(s.get('total_changes', 0) for s in summaries.values()),
+                "net_change": sum(s.get('net_change', 0) for s in summaries.values()),
+                "total_contributors": len(set(c for s in summaries.values() for c in s.get('contributors', []))),
             },
             "repo_limit_applied": repo_limit_applied,
             "repo_count_total": repo_count_total,
