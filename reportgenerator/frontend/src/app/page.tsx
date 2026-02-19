@@ -50,6 +50,7 @@ interface DiffSegment {
 }
 
 interface ReportSection {
+  project: string
   title: string
   content: string
 }

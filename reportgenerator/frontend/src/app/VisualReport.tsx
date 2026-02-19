@@ -1,18 +1,6 @@
 'use client'
 
 import { useMemo } from 'react'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts'
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -34,6 +22,10 @@ interface RepoSummary {
     additions: number
     deletions: number
   }>
+  // Enhanced fields for investor reports
+  purpose?: string
+  biweekly_goals?: string
+  accomplishment_summary?: string
 }
 
 interface ReportStats {
@@ -95,10 +87,18 @@ const TOKAMAK_COLORS = {
   orange: '#F59E0B',
 }
 
-const PIE_COLORS = [TOKAMAK_COLORS.blue, TOKAMAK_COLORS.green, TOKAMAK_COLORS.purple, TOKAMAK_COLORS.orange, '#6366F1', '#EC4899']
+// Get period label based on days
+const getPeriodLabel = (days: number): string => {
+  if (days <= 10) return 'Weekly'
+  if (days <= 20) return 'Biweekly'
+  if (days <= 45) return 'Monthly'
+  return 'Quarterly'
+}
 
 // Cover Section
 function ReportCover({ dateRange, stats }: { dateRange: DateRange; stats: ReportStats }) {
+  const periodLabel = getPeriodLabel(dateRange.days)
+
   return (
     <div className="report-cover">
       <div className="relative z-10">
@@ -115,7 +115,7 @@ function ReportCover({ dateRange, stats }: { dateRange: DateRange; stats: Report
           Development<br />Progress Report
         </h1>
         <p className="report-cover-subtitle">
-          Biweekly Engineering & Ecosystem Update
+          {periodLabel} Engineering & Ecosystem Update
         </p>
         <div className="report-cover-date">
           {formatDate(dateRange.start)} — {formatDate(dateRange.end)}
@@ -191,80 +191,6 @@ function StatCards({ stats }: { stats: ReportStats }) {
   )
 }
 
-// Activity Chart
-function ActivityChart({ summaries }: { summaries: Record<string, RepoSummary> }) {
-  const chartData = useMemo(() => {
-    return Object.entries(summaries)
-      .sort((a, b) => b[1].total_changes - a[1].total_changes)
-      .slice(0, 10)
-      .map(([name, data]) => ({
-        name: name.length > 15 ? name.substring(0, 15) + '...' : name,
-        fullName: name,
-        added: data.lines_added,
-        deleted: data.lines_deleted,
-        commits: data.total_commits,
-      }))
-  }, [summaries])
-
-  return (
-    <div className="chart-container mt-8">
-      <h3 className="chart-title">Top 10 Repositories by Code Changes</h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis type="number" tickFormatter={formatNumber} />
-          <YAxis type="category" dataKey="name" width={120} tick={{ fontSize: 12 }} />
-          <Tooltip
-            formatter={(value: number, name: string) => [formatNumber(value), name === 'added' ? 'Lines Added' : 'Lines Deleted']}
-            labelFormatter={(label) => chartData.find(d => d.name === label)?.fullName || label}
-          />
-          <Bar dataKey="added" name="added" fill={TOKAMAK_COLORS.green} radius={[0, 4, 4, 0]} />
-          <Bar dataKey="deleted" name="deleted" fill={TOKAMAK_COLORS.red} radius={[0, 4, 4, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
-// Contribution Pie Chart
-function ContributionChart({ summaries }: { summaries: Record<string, RepoSummary> }) {
-  const pieData = useMemo(() => {
-    return Object.entries(summaries)
-      .sort((a, b) => b[1].total_changes - a[1].total_changes)
-      .slice(0, 6)
-      .map(([name, data]) => ({
-        name: name.length > 20 ? name.substring(0, 20) + '...' : name,
-        value: data.total_changes,
-      }))
-  }, [summaries])
-
-  return (
-    <div className="chart-container mt-8">
-      <h3 className="chart-title">Code Changes Distribution</h3>
-      <ResponsiveContainer width="100%" height={250}>
-        <PieChart>
-          <Pie
-            data={pieData}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={100}
-            paddingAngle={2}
-            dataKey="value"
-            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-            labelLine={false}
-          >
-            {pieData.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip formatter={(value: number) => formatNumber(value)} />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  )
-}
-
 // Section Header
 function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: string }) {
   return (
@@ -278,14 +204,47 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
   )
 }
 
-// Repository Card
-function RepoCard({ name, data }: { name: string; data: RepoSummary }) {
+// Enhanced Repository Card
+function RepoCard({ name, data, sectionContent }: { name: string; data: RepoSummary; sectionContent?: string }) {
   const topAccomplishments = useMemo(() => {
     return data.top_commits?.slice(0, 5).map(c => ({
-      title: c.message.split('\n')[0].substring(0, 80),
+      title: c.message.split('\n')[0].substring(0, 100),
       changes: c.additions + c.deletions,
+      type: detectCommitType(c.message),
     })) || []
   }, [data.top_commits])
+
+  // Extract structured info from section content if available
+  const extractedInfo = useMemo(() => {
+    if (!sectionContent) return null
+
+    // Extract Overview section (between ### Overview and next ###)
+    const overviewMatch = sectionContent.match(/###\s*Overview\s*\n([\s\S]*?)(?=###|$)/i)
+    const overviewText = overviewMatch?.[1]?.trim().replace(/\*\*/g, '').replace(/\n+/g, ' ').trim()
+
+    // Extract Period Goals section
+    const goalsMatch = sectionContent.match(/###\s*Period Goals?\s*\n([\s\S]*?)(?=###|$)/i)
+    const goalsText = goalsMatch?.[1]?.trim().replace(/\*\*/g, '').replace(/\n+/g, ' ').trim()
+
+    // Extract Key Accomplishments section - get the first 3 bullets as summary
+    const accomplishmentsMatch = sectionContent.match(/###\s*Key Accomplishments?\s*\n([\s\S]*?)(?=###|$)/i)
+    let accomplishmentsText = null
+    if (accomplishmentsMatch) {
+      const bullets = accomplishmentsMatch[1].match(/\*\s+\*\*[^*]+\*\*[^*\n]*/g)
+      if (bullets && bullets.length > 0) {
+        // Take first 2 accomplishments and clean them up
+        accomplishmentsText = bullets.slice(0, 2)
+          .map(b => b.replace(/^\*\s+/, '').replace(/\*\*/g, '').trim())
+          .join('; ')
+      }
+    }
+
+    return {
+      purpose: overviewText || null,
+      goals: goalsText || null,
+      summary: accomplishmentsText || null,
+    }
+  }, [sectionContent])
 
   return (
     <div className="repo-card">
@@ -326,6 +285,30 @@ function RepoCard({ name, data }: { name: string; data: RepoSummary }) {
         </div>
       </div>
 
+      {/* Repository Purpose & Context */}
+      {(data.purpose || extractedInfo?.purpose) && (
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <div className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1">Repository Purpose</div>
+          <p className="text-sm text-gray-700">{data.purpose || extractedInfo?.purpose}</p>
+        </div>
+      )}
+
+      {/* Biweekly Goals */}
+      {(data.biweekly_goals || extractedInfo?.goals) && (
+        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-100">
+          <div className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-1">This Period&apos;s Focus</div>
+          <p className="text-sm text-gray-700">{data.biweekly_goals || extractedInfo?.goals}</p>
+        </div>
+      )}
+
+      {/* Accomplishment Summary */}
+      {(data.accomplishment_summary || extractedInfo?.summary) && (
+        <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-100">
+          <div className="text-xs font-semibold text-green-700 uppercase tracking-wide mb-1">Key Accomplishments</div>
+          <p className="text-sm text-gray-700">{data.accomplishment_summary || extractedInfo?.summary}</p>
+        </div>
+      )}
+
       {/* Progress visualization */}
       <div className="mt-4 mb-4">
         <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
@@ -335,27 +318,32 @@ function RepoCard({ name, data }: { name: string; data: RepoSummary }) {
         <div className="flex h-2 rounded-full overflow-hidden bg-gray-100">
           <div
             className="bg-green-500"
-            style={{ width: `${(data.lines_added / (data.lines_added + data.lines_deleted)) * 100}%` }}
+            style={{ width: `${(data.lines_added / Math.max(1, data.lines_added + data.lines_deleted)) * 100}%` }}
           />
           <div
             className="bg-red-400"
-            style={{ width: `${(data.lines_deleted / (data.lines_added + data.lines_deleted)) * 100}%` }}
+            style={{ width: `${(data.lines_deleted / Math.max(1, data.lines_added + data.lines_deleted)) * 100}%` }}
           />
         </div>
       </div>
 
-      {/* Key accomplishments */}
+      {/* Key Changes with context */}
       {topAccomplishments.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-100">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Key Changes</div>
           <ul className="accomplishment-list">
             {topAccomplishments.map((item, idx) => (
               <li key={idx} className="accomplishment-item py-2">
-                <div className="accomplishment-icon text-xs">
-                  {idx + 1}
+                <div className="accomplishment-icon text-xs" style={{ backgroundColor: getTypeColor(item.type) + '20', color: getTypeColor(item.type) }}>
+                  {getTypeIcon(item.type)}
                 </div>
                 <div className="accomplishment-content">
-                  <div className="text-sm text-gray-700">{item.title}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-1.5 py-0.5 rounded-full font-medium" style={{ backgroundColor: getTypeColor(item.type) + '20', color: getTypeColor(item.type) }}>
+                      {item.type}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-700 mt-1">{item.title}</div>
                   <div className="text-xs text-gray-400 mt-0.5">{formatNumber(item.changes)} lines changed</div>
                 </div>
               </li>
@@ -367,15 +355,136 @@ function RepoCard({ name, data }: { name: string; data: RepoSummary }) {
   )
 }
 
+// Others Card for small repos
+function OthersCard({ repos }: { repos: Array<[string, RepoSummary]> }) {
+  const totalStats = useMemo(() => {
+    return repos.reduce((acc, [, data]) => ({
+      commits: acc.commits + data.total_commits,
+      added: acc.added + data.lines_added,
+      deleted: acc.deleted + data.lines_deleted,
+    }), { commits: 0, added: 0, deleted: 0 })
+  }, [repos])
+
+  return (
+    <div className="repo-card bg-gray-50">
+      <div className="repo-card-header">
+        <div>
+          <h3 className="repo-card-title text-gray-600">Other Repositories</h3>
+          <p className="text-sm text-gray-500 mt-1">{repos.length} repositories with minor changes (&lt; 10 lines each)</p>
+        </div>
+        <div className="repo-card-stats">
+          <div className="repo-stat bg-white">
+            <div className="repo-stat-value text-gray-800">{totalStats.commits}</div>
+            <div className="repo-stat-label">Commits</div>
+          </div>
+          <div className="repo-stat bg-white">
+            <div className="repo-stat-value" style={{ color: TOKAMAK_COLORS.green }}>+{formatNumber(totalStats.added)}</div>
+            <div className="repo-stat-label">Added</div>
+          </div>
+          <div className="repo-stat bg-white">
+            <div className="repo-stat-value" style={{ color: TOKAMAK_COLORS.red }}>-{formatNumber(totalStats.deleted)}</div>
+            <div className="repo-stat-label">Deleted</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Changes Summary</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {repos.map(([name, data]) => (
+            <div key={name} className="flex items-center justify-between p-2 bg-white rounded border border-gray-100">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 truncate max-w-[200px]">{name}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gray-500">{data.total_commits} commit{data.total_commits !== 1 ? 's' : ''}</span>
+                {data.top_commits?.[0] && (
+                  <span className="text-gray-400 truncate max-w-[150px]" title={data.top_commits[0].message}>
+                    {data.top_commits[0].message.slice(0, 30)}...
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Helper functions for commit type detection
+function detectCommitType(message: string): string {
+  const lower = message.toLowerCase()
+  if (lower.startsWith('feat') || lower.includes('add ') || lower.includes('implement')) return 'feature'
+  if (lower.startsWith('fix') || lower.includes('bug') || lower.includes('resolve')) return 'fix'
+  if (lower.startsWith('refactor') || lower.includes('refactor')) return 'refactor'
+  if (lower.startsWith('docs') || lower.includes('readme') || lower.includes('documentation')) return 'docs'
+  if (lower.startsWith('test') || lower.includes('test')) return 'test'
+  if (lower.startsWith('chore') || lower.includes('update') || lower.includes('bump')) return 'chore'
+  if (lower.startsWith('ci') || lower.includes('workflow') || lower.includes('deploy')) return 'ci'
+  return 'update'
+}
+
+function getTypeColor(type: string): string {
+  const colors: Record<string, string> = {
+    feature: TOKAMAK_COLORS.green,
+    fix: TOKAMAK_COLORS.red,
+    refactor: TOKAMAK_COLORS.purple,
+    docs: TOKAMAK_COLORS.blue,
+    test: TOKAMAK_COLORS.orange,
+    chore: '#6B7280',
+    ci: '#EC4899',
+    update: '#6B7280',
+  }
+  return colors[type] || '#6B7280'
+}
+
+function getTypeIcon(type: string): string {
+  const icons: Record<string, string> = {
+    feature: '+',
+    fix: '!',
+    refactor: '~',
+    docs: 'D',
+    test: 'T',
+    chore: 'C',
+    ci: 'CI',
+    update: 'U',
+  }
+  return icons[type] || 'U'
+}
+
 /* ------------------------------------------------------------------ */
 /* Main Component                                                      */
 /* ------------------------------------------------------------------ */
 
 export default function VisualReport({ stats, dateRange, summaries, sections }: VisualReportProps) {
-  const sortedRepos = useMemo(() => {
-    return Object.entries(summaries)
+  const { mainRepos, otherRepos } = useMemo(() => {
+    const sorted = Object.entries(summaries)
       .sort((a, b) => b[1].total_changes - a[1].total_changes)
+
+    // Split into main repos (>= 10 line changes) and others (< 10 line changes)
+    const main: Array<[string, RepoSummary]> = []
+    const others: Array<[string, RepoSummary]> = []
+
+    for (const entry of sorted) {
+      if (entry[1].total_changes >= 10) {
+        main.push(entry)
+      } else {
+        others.push(entry)
+      }
+    }
+
+    return { mainRepos: main, otherRepos: others }
   }, [summaries])
+
+  // Map sections to repo names for content lookup
+  const sectionContentMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const section of sections) {
+      map[section.project] = section.content
+    }
+    return map
+  }, [sections])
 
   return (
     <div className="visual-report space-y-8 pb-16">
@@ -390,12 +499,6 @@ export default function VisualReport({ stats, dateRange, summaries, sections }: 
       />
       <StatCards stats={stats} />
 
-      {/* Charts */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <ActivityChart summaries={summaries} />
-        <ContributionChart summaries={summaries} />
-      </div>
-
       {/* All Repositories */}
       <SectionHeader
         title="Repository Details"
@@ -404,9 +507,19 @@ export default function VisualReport({ stats, dateRange, summaries, sections }: 
       />
 
       <div className="space-y-4">
-        {sortedRepos.map(([name, data]) => (
-          <RepoCard key={name} name={name} data={data} />
+        {mainRepos.map(([name, data]) => (
+          <RepoCard
+            key={name}
+            name={name}
+            data={data}
+            sectionContent={sectionContentMap[name]}
+          />
         ))}
+
+        {/* Others section for small repos */}
+        {otherRepos.length > 0 && (
+          <OthersCard repos={otherRepos} />
+        )}
       </div>
 
       {/* Footer */}

@@ -852,7 +852,8 @@ def prepare_summary(project: str, data: Dict[str, Any]) -> dict:
     # Count unique contributors
     contributors = set()
     for c in commits:
-        author = c.get('author', '')
+        # Check both 'member_id' (from CSV parsing) and 'author' (legacy) fields
+        author = c.get('member_id') or c.get('author', '')
         if author:
             contributors.add(author)
 
