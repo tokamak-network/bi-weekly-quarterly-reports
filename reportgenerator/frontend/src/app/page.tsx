@@ -117,6 +117,10 @@ const DEFAULT_MODEL_OPTIONS = [
   'gpt-5.2-pro',
   'gpt-5.2',
   'gpt-5.2-codex',
+  'deepseek-v3.2',
+  'deepseek-chat',
+  'gemini-3-pro',
+  'gemini-3-flash',
 ]
 
 const SAMPLE_MARKDOWN = `### Highlight
@@ -1477,98 +1481,8 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Podcast Generation */}
-              <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-gray-900">Podcast Summary</h3>
-                <p className="mt-1 text-[10px] text-gray-500">
-                  Generate a 3-5 min audio summary with two hosts discussing the report highlights.
-                </p>
-
-                <div className="mt-3 space-y-2">
-                  {!podcastAudio && (
-                    <button
-                      onClick={handleGeneratePodcast}
-                      disabled={generatingScript || generatingAudio}
-                      className="w-full rounded-lg bg-purple-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-purple-700 transition disabled:opacity-50"
-                    >
-                      {generatingScript ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Generating script...
-                        </span>
-                      ) : generatingAudio ? (
-                        <span className="flex items-center justify-center gap-2">
-                          <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Creating audio...
-                        </span>
-                      ) : (
-                        '🎙️ Generate Podcast'
-                      )}
-                    </button>
-                  )}
-
-                  {podcastError && (
-                    <div className="rounded-lg bg-red-50 border border-red-200 p-2">
-                      <p className="text-[10px] text-red-600">{podcastError}</p>
-                    </div>
-                  )}
-
-                  {podcastAudio && (
-                    <div className="space-y-2">
-                      <div className="rounded-lg bg-purple-50 border border-purple-200 p-3">
-                        <div className="flex items-center gap-2 text-xs font-semibold text-purple-700">
-                          <span>🎧</span> Podcast ready!
-                        </div>
-                        <audio
-                          controls
-                          className="w-full mt-2 h-8"
-                          src={`data:audio/mp3;base64,${podcastAudio}`}
-                        />
-                      </div>
-
-                      <button
-                        onClick={handleDownloadPodcast}
-                        className="w-full rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white hover:bg-purple-700 transition"
-                      >
-                        Download Podcast (.mp3)
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const reportTitle = dateRange?.start
-                            ? `Tokamak Network Biweekly Report (${dateRange.start})`
-                            : 'Tokamak Network Biweekly Report'
-                          const tweetText = `🎙️ New podcast episode! Listen to our ${reportTitle} audio summary.\n\n#TokamakNetwork #L2 #Ethereum #Blockchain`
-                          const xUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`
-                          window.open(xUrl, '_blank', 'width=550,height=420')
-                        }}
-                        className="w-full rounded-lg bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800 transition flex items-center justify-center gap-2"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                        </svg>
-                        Share to X
-                      </button>
-
-                      <button
-                        onClick={() => { setPodcastAudio(null); setPodcastScript(null); }}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 transition"
-                      >
-                        Generate New Podcast
-                      </button>
-                    </div>
-                  )}
-
-                  {podcastScript && !podcastAudio && !generatingAudio && (
-                    <div className="rounded-lg bg-gray-50 p-3">
-                      <div className="text-[10px] font-semibold text-gray-600 mb-1">Script Preview</div>
-                      <div className="text-[9px] text-gray-500 max-h-20 overflow-y-auto whitespace-pre-wrap">
-                        {podcastScript.slice(0, 500)}...
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+              {/* Podcast Generation - Disabled (requires OpenAI TTS API key) */}
+              {/* TODO: Enable when TTS API is available */}
             </div>
           </div>
         </main>

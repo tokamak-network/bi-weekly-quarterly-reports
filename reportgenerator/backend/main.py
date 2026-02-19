@@ -157,7 +157,7 @@ SECTION_INFO_INDIVIDUAL_PUBLIC = {
 
 DEFAULT_TOKAMAK_BASE_URL = "https://api.ai.tokamak.network"
 DEFAULT_TOKAMAK_MODEL = "gpt-5.2-pro"
-DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex"]
+DEFAULT_TOKAMAK_MODELS = ["gpt-5.2-pro", "gpt-5.2", "gpt-5.2-codex", "deepseek-v3.2", "deepseek-chat", "gemini-3-pro", "gemini-3-flash"]
 DEFAULT_TOKAMAK_TIMEOUT = 30
 MAX_AI_REPO_LIMIT = 20
 
@@ -3334,15 +3334,16 @@ async def generate_podcast_audio(
             "error": "OpenAI library not available"
         })
 
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("TOKAMAK_API_KEY")
+    api_key = os.getenv("TOKAMAK_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
         return JSONResponse({
             "success": False,
-            "error": "OpenAI API key not configured. Set OPENAI_API_KEY or TOKAMAK_API_KEY environment variable."
+            "error": "API key not configured. Set TOKAMAK_API_KEY environment variable."
         })
 
     try:
-        client = OpenAI(api_key=api_key)
+        # Use Tokamak API endpoint for TTS
+        client = OpenAI(base_url=get_tokamak_base_url(), api_key=api_key)
 
         # Parse script into speaker segments
         lines = script.strip().split('\n')
