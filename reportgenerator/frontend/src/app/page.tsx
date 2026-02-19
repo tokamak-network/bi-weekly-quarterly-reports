@@ -630,19 +630,52 @@ export default function Home() {
     }
   }
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return
     const dropped = acceptedFiles[0]
+    console.log('[DEBUG] File dropped:', dropped.name)
     setFileName(dropped.name)
     setFile(dropped)
     setPeriodSource('detected')
-    analyzeCsv(dropped)
+
+    // Inline analyze to avoid stale closure
+    setAnalyzing(true)
+    setAnalysisError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', dropped)
+      const response = await fetch('http://localhost:8000/api/analyze', { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Failed to analyze CSV')
+      const data = await response.json()
+      console.log('[DEBUG] CSV analysis result:', data)
+      const range = data.date_range || {}
+      if (range.start && range.end) {
+        setStartDate(formatDate(range.start))
+        setEndDate(formatDate(range.end))
+      }
+      if (typeof range.days === 'number') {
+        setDetectedDaysOverride(range.days)
+        setPeriod(detectPeriodType(range.days))
+        setPeriodSource('detected')
+      }
+    } catch (error) {
+      console.error('[DEBUG] CSV analysis error:', error)
+      setAnalysisError(error instanceof Error ? error.message : 'Failed to analyze CSV')
+    } finally {
+      setAnalyzing(false)
+    }
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: { 'text/csv': ['.csv'] },
+    accept: {
+      'text/csv': ['.csv'],
+      'application/vnd.ms-excel': ['.csv'],
+      'text/plain': ['.csv'],
+    },
     multiple: false,
+    noClick: false,
+    noKeyboard: false,
   })
 
   const handleCopy = async (text: string, setter: (v: boolean) => void) => {
