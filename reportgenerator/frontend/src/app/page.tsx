@@ -289,6 +289,8 @@ export default function Home() {
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
   const [reportFormat, setReportFormat] = useState<'comprehensive' | 'concise' | 'structured'>('comprehensive')
+  const [outputFormat, setOutputFormat] = useState<'markdown' | 'html'>('markdown')
+  const [htmlReport, setHtmlReport] = useState<string | null>(null)
   const [repoLimit, setRepoLimit] = useState('0')
   const [activeView, setActiveView] = useState<'preview' | 'raw'>('preview')
   const [loading, setLoading] = useState(false)
@@ -531,6 +533,7 @@ export default function Home() {
       formData.append('member_filter', 'all')
       formData.append('report_grouping', reportGrouping)
       formData.append('report_format', reportFormat)
+      formData.append('output_format', outputFormat)
       formData.append('repo_limit', repoLimit)
       formData.append('model', selectedModel)
 
@@ -590,6 +593,7 @@ export default function Home() {
       })
       setDateRange(data.date_range || null)
       setReportSummaries(data.summaries || {})
+      setHtmlReport(data.html_report || null)
       setGenerated(true)
       setActiveView('preview')
 
@@ -1387,6 +1391,34 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                  {/* Output format toggle (only for comprehensive + public) */}
+                  {reportFormat === 'comprehensive' && reportType === 'public' && (
+                    <div className="rounded-lg border border-gray-200 px-4 py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-medium text-gray-800">Output format</div>
+                          <p className="mt-1 text-xs text-gray-500">Generate styled HTML in addition to Markdown.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {(['markdown', 'html'] as const).map((f) => (
+                            <button
+                              key={f}
+                              onClick={() => setOutputFormat(f)}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                outputFormat === f
+                                  ? f === 'html'
+                                    ? 'border-orange-600 bg-orange-50 text-orange-700'
+                                    : 'border-gray-600 bg-gray-50 text-gray-700'
+                                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                              }`}
+                            >
+                              {f === 'html' ? '🌐 HTML' : '📝 Markdown'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {/* Repo limit - hidden for comprehensive mode which includes all repos */}
                   {reportGrouping === 'repository' && reportFormat !== 'comprehensive' && (
                     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
@@ -1917,6 +1949,34 @@ export default function Home() {
                 >
                   Download .md
                 </button>
+                {htmlReport && (
+                  <>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([htmlReport], { type: 'text/html' })
+                        const url = URL.createObjectURL(blob)
+                        const link = document.createElement('a')
+                        link.href = url
+                        link.download = `report-${dateRange?.start ?? 'draft'}.html`
+                        link.click()
+                        URL.revokeObjectURL(url)
+                      }}
+                      className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 transition"
+                    >
+                      Download .html
+                    </button>
+                    <button
+                      onClick={() => {
+                        const blob = new Blob([htmlReport], { type: 'text/html' })
+                        const url = URL.createObjectURL(blob)
+                        window.open(url, '_blank')
+                      }}
+                      className="rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600 transition"
+                    >
+                      Preview HTML
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 

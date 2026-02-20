@@ -2700,6 +2700,7 @@ async def generate_report(
     report_grouping: str = Form("project"),
     repo_limit: int = Form(0),
     report_format: str = Form("concise"),
+    output_format: str = Form("markdown"),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -3014,6 +3015,26 @@ async def generate_report(
             title = build_report_title(scope, start_date, end_date, days)
             headline = build_report_headline(summaries, report_type)
 
+        # HTML output: convert comprehensive markdown to styled HTML
+        html_report = ""
+        if output_format == "html" and report_format == "comprehensive" and report_type == "public":
+            from html_report import generate_html_report
+            report_stats = {
+                "total_commits": total_commits,
+                "total_repos": total_repos,
+                "total_lines_added": sum(s.get('lines_added', 0) for s in summaries.values()),
+                "total_lines_deleted": sum(s.get('lines_deleted', 0) for s in summaries.values()),
+                "total_changes": sum(s.get('total_changes', 0) for s in summaries.values()),
+                "net_change": sum(s.get('net_change', 0) for s in summaries.values()),
+                "total_contributors": len(set(c for s in summaries.values() for c in s.get('contributors', []))),
+            }
+            html_report = generate_html_report(
+                summaries=summaries,
+                markdown_report=full_report,
+                date_range={"start": start_date, "end": end_date},
+                stats=report_stats,
+            )
+
         return JSONResponse({
             "success": True,
             "report_type": report_type,
@@ -3045,6 +3066,8 @@ async def generate_report(
             "title": title,
             "headline": headline,
             "full_report": full_report,
+            "html_report": html_report,
+            "output_format": output_format,
             "sections": sections,
             "summaries": summaries,
             "members": members,
