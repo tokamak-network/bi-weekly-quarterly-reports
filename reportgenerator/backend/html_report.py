@@ -6,6 +6,7 @@ self-contained HTML file styled after reference-report-v2.html.
 """
 
 import base64
+import json
 import os
 import re
 from typing import Any, Dict, List, Optional
@@ -13,6 +14,14 @@ from collections import Counter
 
 
 LOGO_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "tokamak-logos")
+
+# Load GitHub username mapping (member_id -> github_username)
+_GITHUB_MEMBERS_PATH = os.path.join(os.path.dirname(__file__), "github_members.json")
+try:
+    with open(_GITHUB_MEMBERS_PATH) as _f:
+        GITHUB_MEMBERS: Dict[str, str] = json.load(_f)
+except (FileNotFoundError, json.JSONDecodeError):
+    GITHUB_MEMBERS = {}
 GITHUB_ORG_URL = "https://github.com/tokamak-network"
 
 
@@ -267,8 +276,15 @@ def generate_html_report(
         repo_contributors = summary.get("contributor_count", 0)
 
         overview = parsed_repo["overview"] if parsed_repo and parsed_repo["overview"] else ""
-        if len(overview) > 300:
-            overview = overview[:297] + "..."
+        # Ensure overview ends at a complete sentence if it needs trimming
+        if len(overview) > 600:
+            # Cut at last sentence boundary within limit
+            cut = overview[:600]
+            last_period = max(cut.rfind('. '), cut.rfind('.\n'), cut.rfind('.'))
+            if last_period > 200:
+                overview = cut[:last_period + 1]
+            else:
+                overview = cut
 
         # Accomplishments
         accomplishments = parsed_repo["accomplishments"] if parsed_repo else []
@@ -281,17 +297,25 @@ def generate_html_report(
             else:
                 accomplishments_html += f'<li style="margin-bottom:8px;line-height:1.5;"><strong>{_escape(acc)}</strong></li>\n'
 
-        # Contributors
+        # Contributors with GitHub profile links (via github_members.json mapping)
         contributor_counts = _get_contributor_counts(summary)
         contributors_html = ""
         for i, c in enumerate(contributor_counts[:3]):
             if i > 0:
                 contributors_html += " · "
-            contributors_html += (
-                f'<a href="https://github.com/{_escape(c["name"])}" target="_blank" '
-                f'style="color:#2A72E5;text-decoration:none;font-weight:500;">{_escape(c["name"])}</a> '
-                f'<span style="color:#888;">({c["commits"]} commits)</span>'
-            )
+            name = c["name"]
+            github_user = GITHUB_MEMBERS.get(name.lower())
+            if github_user:
+                contributors_html += (
+                    f'<a href="https://github.com/{_escape(github_user)}" target="_blank" '
+                    f'style="color:#2A72E5;text-decoration:none;font-weight:500;">{_escape(name)}</a> '
+                    f'<span style="color:#888;">({c["commits"]} commits)</span>'
+                )
+            else:
+                contributors_html += (
+                    f'<span style="color:#1a1a1a;font-weight:500;">{_escape(name)}</span> '
+                    f'<span style="color:#888;">({c["commits"]} commits)</span>'
+                )
 
         # Code analysis & next steps
         code_analysis = parsed_repo.get("code_analysis", "") if parsed_repo else ""
@@ -301,11 +325,11 @@ def generate_html_report(
         if code_analysis:
             extra_sections += f'''
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Code Analysis</h4>
-        <p style="color:#444;font-size:0.85rem;line-height:1.6;">{_escape(code_analysis[:500])}</p>'''
+        <p style="color:#444;font-size:0.85rem;line-height:1.6;">{_escape(code_analysis)}</p>'''
         if next_steps:
             extra_sections += f'''
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Next Steps</h4>
-        <p style="color:#444;font-size:0.85rem;line-height:1.6;">{_escape(next_steps[:300])}</p>'''
+        <p style="color:#444;font-size:0.85rem;line-height:1.6;">{_escape(next_steps)}</p>'''
 
         repo_cards_html += f'''
     <div style="background:#fff;border:1px solid #e8e8e8;border-radius:12px;padding:32px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
@@ -369,7 +393,7 @@ def generate_html_report(
 <div style="min-height:100vh;background:linear-gradient(160deg,#0d0d0d 0%,#1a1a2e 50%,#0d0d0d 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px 40px;position:relative;overflow:hidden;">
   <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px),repeating-linear-gradient(-45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px);"></div>
   <div style="position:relative;z-index:1;text-align:center;">
-    <img src="{stacked_logo}" alt="Tokamak Network" style="height:120px;margin-bottom:48px;">
+    <img src="{stacked_logo}" alt="Tokamak Network" style="height:480px;margin-bottom:0;">
     <h1 style="font-size:3.5rem;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:16px;">DEVELOPMENT<br>REPORT</h1>
     <div style="width:60px;height:3px;background:#2A72E5;margin:24px auto;"></div>
     <p style="font-size:1.2rem;color:rgba(255,255,255,0.6);font-weight:300;letter-spacing:4px;text-transform:uppercase;">Bi-Weekly Engineering Update</p>
@@ -410,11 +434,6 @@ def generate_html_report(
 <!-- BODY -->
 <div style="max-width:1100px;margin:0 auto;padding:48px 24px;">
 
-  <!-- NAV BAR with logo -->
-  <div style="display:flex;align-items:center;margin-bottom:48px;">
-    <img src="{horizontal_logo}" alt="Tokamak Network" style="height:200px;">
-  </div>
-
   <!-- EXECUTIVE SUMMARY -->
   <div style="margin-bottom:48px;">
     <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
@@ -434,7 +453,7 @@ def generate_html_report(
 <!-- FOOTER -->
 <div style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a2e 50%,#0d0d0d 100%);padding:60px 40px;text-align:center;">
   <div style="max-width:600px;margin:0 auto;">
-    <img src="{stacked_logo}" alt="Tokamak Network" style="height:200px;margin-bottom:12px;">
+    <img src="{stacked_logo}" alt="Tokamak Network" style="height:160px;margin-bottom:0;">
     <p style="color:#888;font-size:0.8rem;">Tokamak Network · Bi-Weekly Development Report · {_escape(date_short)}</p>
     <p style="color:#aaa;font-size:0.7rem;margin-top:4px;">Generated automatically from GitHub activity data</p>
   </div>
@@ -445,8 +464,23 @@ def generate_html_report(
     return html
 
 
+def _strip_markdown(text: str) -> str:
+    """Remove markdown syntax artifacts from AI-generated text."""
+    import re
+    # Remove heading markers (### ## #)
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # Remove bold/italic markers (**text** -> text, *text* -> text)
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
+    # Remove markdown links [text](url) -> text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Remove inline code backticks
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    return text.strip()
+
+
 def _escape(text: str) -> str:
-    """HTML-escape text."""
+    """HTML-escape text (also strips markdown artifacts)."""
+    text = _strip_markdown(text)
     return (
         text.replace("&", "&amp;")
         .replace("<", "&lt;")

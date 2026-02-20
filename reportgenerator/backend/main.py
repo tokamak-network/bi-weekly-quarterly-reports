@@ -648,13 +648,13 @@ def parse_csv_content(content: str) -> dict:
         project = get_project_for_repo(repo)
 
         entry_type = row.get('type', '')
-        message = row.get('message', '').strip('"')
-        title = row.get('title', '').strip('"')
-        sha = row.get('sha', '').strip('"')
-        pr_number = row.get('pr_number', '').strip('"')
-        additions = row.get('additions', '0') or '0'
-        deletions = row.get('deletions', '0') or '0'
-        state = row.get('state', '').strip('"')
+        message = (row.get('message') or '').strip('"')
+        title = (row.get('title') or '').strip('"')
+        sha = (row.get('sha') or '').strip('"')
+        pr_number = (row.get('pr_number') or '').strip('"')
+        additions = row.get('additions') or '0'
+        deletions = row.get('deletions') or '0'
+        state = (row.get('state') or '').strip('"')
 
         repo_target = repo_data[repo]
         repo_target["repos"].add(repo)

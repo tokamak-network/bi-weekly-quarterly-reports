@@ -6,7 +6,19 @@ import { useDropzone } from 'react-dropzone'
 import dynamic from 'next/dynamic'
 
 // Dynamic import for VisualReport to avoid SSR issues with recharts
-const VisualReport = dynamic(() => import('./VisualReport'), { ssr: false })
+const VisualReport = dynamic(
+  () => import('./VisualReport').catch((err) => {
+    console.error('Failed to load VisualReport chunk:', err)
+    // Return a fallback component on chunk load failure
+    return { default: ({ stats }: any) => (
+      <div className="p-8 text-center text-gray-500">
+        <p className="text-lg font-medium mb-2">Visual report could not be loaded</p>
+        <p className="text-sm">Switch to Raw view to see the report content. ({String(err?.message || err)})</p>
+      </div>
+    )}
+  }),
+  { ssr: false }
+)
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */

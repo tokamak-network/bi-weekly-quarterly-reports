@@ -207,11 +207,12 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
 // Enhanced Repository Card
 function RepoCard({ name, data, sectionContent }: { name: string; data: RepoSummary; sectionContent?: string }) {
   const topAccomplishments = useMemo(() => {
-    return data.top_commits?.slice(0, 5).map(c => ({
-      title: c.message.split('\n')[0].substring(0, 100),
-      changes: c.additions + c.deletions,
-      type: detectCommitType(c.message),
-    })) || []
+    if (!Array.isArray(data.top_commits)) return []
+    return data.top_commits.slice(0, 5).map(c => ({
+      title: (c?.message || '').split('\n')[0].substring(0, 100),
+      changes: (Number(c?.additions) || 0) + (Number(c?.deletions) || 0),
+      type: detectCommitType(c?.message || ''),
+    }))
   }, [data.top_commits])
 
   // Extract structured info from section content if available
@@ -458,16 +459,63 @@ function getTypeIcon(type: string): string {
 /* ------------------------------------------------------------------ */
 
 export default function VisualReport({ stats, dateRange, summaries, sections }: VisualReportProps) {
-  const { mainRepos, otherRepos } = useMemo(() => {
-    const sorted = Object.entries(summaries)
-      .sort((a, b) => b[1].total_changes - a[1].total_changes)
+  // Defensive: ensure summaries is a valid object
+  const safeSummaries = useMemo(() => {
+    if (!summaries || typeof summaries !== 'object') return {}
+    const result: Record<string, RepoSummary> = {}
+    for (const [key, val] of Object.entries(summaries)) {
+      if (!val || typeof val !== 'object') continue
+      result[key] = {
+        project: val.project ?? key,
+        total_commits: Number(val.total_commits) || 0,
+        merged_prs: Number(val.merged_prs) || 0,
+        lines_added: Number(val.lines_added) || 0,
+        lines_deleted: Number(val.lines_deleted) || 0,
+        total_changes: Number(val.total_changes) || 0,
+        net_change: Number(val.net_change) || 0,
+        contributors: Array.isArray(val.contributors) ? val.contributors : [],
+        contributor_count: Number(val.contributor_count) || 0,
+        github_url: val.github_url ?? null,
+        top_commits: Array.isArray(val.top_commits) ? val.top_commits : [],
+        purpose: val.purpose,
+        biweekly_goals: val.biweekly_goals,
+        accomplishment_summary: val.accomplishment_summary,
+      }
+    }
+    return result
+  }, [summaries])
 
-    // Split into main repos (>= 10 line changes) and others (< 10 line changes)
+  const safeStats = useMemo(() => ({
+    total_commits: Number(stats?.total_commits) || 0,
+    total_prs: Number(stats?.total_prs) || 0,
+    total_repos: Number(stats?.total_repos) || 0,
+    total_lines_added: Number(stats?.total_lines_added) || 0,
+    total_lines_deleted: Number(stats?.total_lines_deleted) || 0,
+    total_changes: Number(stats?.total_changes) || 0,
+    net_change: Number(stats?.net_change) || 0,
+    total_contributors: Number(stats?.total_contributors) || 0,
+  }), [stats])
+
+  const safeDateRange = useMemo(() => ({
+    start: dateRange?.start ?? '',
+    end: dateRange?.end ?? '',
+    days: Number(dateRange?.days) || 0,
+  }), [dateRange])
+
+  const safeSections = useMemo(() => {
+    if (!Array.isArray(sections)) return []
+    return sections.filter(s => s && typeof s === 'object')
+  }, [sections])
+
+  const { mainRepos, otherRepos } = useMemo(() => {
+    const sorted = Object.entries(safeSummaries)
+      .sort((a, b) => (b[1].total_changes || 0) - (a[1].total_changes || 0))
+
     const main: Array<[string, RepoSummary]> = []
     const others: Array<[string, RepoSummary]> = []
 
     for (const entry of sorted) {
-      if (entry[1].total_changes >= 10) {
+      if ((entry[1].total_changes || 0) >= 10) {
         main.push(entry)
       } else {
         others.push(entry)
@@ -475,21 +523,23 @@ export default function VisualReport({ stats, dateRange, summaries, sections }: 
     }
 
     return { mainRepos: main, otherRepos: others }
-  }, [summaries])
+  }, [safeSummaries])
 
   // Map sections to repo names for content lookup
   const sectionContentMap = useMemo(() => {
     const map: Record<string, string> = {}
-    for (const section of sections) {
-      map[section.project] = section.content
+    for (const section of safeSections) {
+      if (section.project && section.content) {
+        map[section.project] = section.content
+      }
     }
     return map
-  }, [sections])
+  }, [safeSections])
 
   return (
     <div className="visual-report space-y-8 pb-16">
       {/* Cover */}
-      <ReportCover dateRange={dateRange} stats={stats} />
+      <ReportCover dateRange={safeDateRange} stats={safeStats} />
 
       {/* Executive Summary */}
       <SectionHeader
@@ -497,12 +547,12 @@ export default function VisualReport({ stats, dateRange, summaries, sections }: 
         subtitle="Key metrics and highlights from this reporting period"
         icon="📊"
       />
-      <StatCards stats={stats} />
+      <StatCards stats={safeStats} />
 
       {/* All Repositories */}
       <SectionHeader
         title="Repository Details"
-        subtitle={`Detailed breakdown of all ${Object.keys(summaries).length} active repositories`}
+        subtitle={`Detailed breakdown of all ${Object.keys(safeSummaries).length} active repositories`}
         icon="📁"
       />
 
