@@ -45,6 +45,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
         "http://localhost:3002",
         "http://127.0.0.1:3002",
     ],
@@ -2082,8 +2084,6 @@ Structure your output EXACTLY as follows:
 
 ## [Repository Name]
 
-**GitHub**: [Will be added automatically]
-
 ### Overview
 Write 2-3 sentences explaining what this repository/project is, its purpose in the Tokamak ecosystem, and why it matters to users and investors.
 
@@ -2108,7 +2108,7 @@ List ALL significant work done. Each bullet should:
 Use this format:
 * **[Action Phrase]**: [Detailed explanation of what was done and why it matters]
 
-Include at least 5-10 bullets covering all major work.
+Scale the number of bullets to the actual work done. Major repos (50+ commits): 8-12 bullets. Medium repos (10-50 commits): 4-8 bullets. Small repos (1-10 commits): 2-4 bullets. Do NOT inflate minimal work into many bullets.
 
 ### Code Analysis
 Explain what the lines added/deleted represent:
@@ -2244,21 +2244,22 @@ Description: {info.get('context', REPO_DESCRIPTIONS.get(project, 'A Tokamak Netw
 4. Each accomplishment should show both WHAT was done and WHY it matters
 5. If lines_deleted is significant, explain it positively (optimization, cleanup, efficiency)
 6. Output in English only.
-7. DO NOT include the GitHub URL line - it will be added automatically.
+7. DO NOT include a GitHub URL line at all - it will be added automatically. Do NOT write placeholder text like "[Will be added automatically]".
 
 Generate the comprehensive section for {project}:"""
 
     response = generate_with_llm(prompt, max_tokens=2000, model=model, timeout_override=180)
     if response:
-        # Ensure GitHub link is included
-        if "**GitHub**:" not in response and github_url:
-            # Insert GitHub link after the repository title
-            lines = response.split('\n')
-            for i, line in enumerate(lines):
-                if line.startswith('## ') or line.startswith('# '):
-                    lines.insert(i + 1, f"\n**GitHub**: {github_url}\n")
-                    break
-            response = '\n'.join(lines)
+        # Remove any AI-generated GitHub placeholder lines
+        import re
+        response = re.sub(r'\*\*GitHub\*\*:.*?\n', '', response)
+        # Insert proper GitHub link after the repository title
+        lines = response.split('\n')
+        for i, line in enumerate(lines):
+            if line.startswith('## ') or line.startswith('# '):
+                lines.insert(i + 1, f"\n**GitHub**: {github_url}\n")
+                break
+        response = '\n'.join(lines)
         return response + "\n\n"
     return generate_basic_comprehensive(project, summary, info)
 
