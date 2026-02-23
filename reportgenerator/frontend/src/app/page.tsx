@@ -370,6 +370,27 @@ export default function Home() {
   const [podcastError, setPodcastError] = useState<string | null>(null)
   const [availableModels, setAvailableModels] = useState<string[]>(DEFAULT_MODEL_OPTIONS)
 
+  // Verify state
+  const [verifying, setVerifying] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<{
+    summary: {
+      total_repos_checked: number
+      repos_with_stat_issues: number
+      total_accomplishments: number
+      phantom_features: number
+      invented_contributors: number
+      accuracy_score: number
+    }
+    details: Array<{
+      repo: string
+      stat_issues: Array<{ metric: string; stated: number; actual: number }>
+      phantom_bullets: string[]
+      invented_contributors: string[]
+    }>
+    overall_grade: string
+  } | null>(null)
+  const [verifyExpanded, setVerifyExpanded] = useState(false)
+
   // Review history state
   const [reviewHistory, setReviewHistory] = useState<ReviewHistoryEntry[]>([])
   const [showHistory, setShowHistory] = useState(false)
@@ -1050,6 +1071,28 @@ export default function Home() {
     }
   }
 
+  const handleVerify = async () => {
+    if (!file || !fullReport) return
+    setVerifying(true)
+    setVerifyResult(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('report_text', fullReport)
+      formData.append('report_grouping', reportGrouping)
+      const response = await fetch('http://localhost:8000/api/verify', { method: 'POST', body: formData })
+      if (!response.ok) throw new Error('Verify failed')
+      const data = await response.json()
+      if (data.success) {
+        setVerifyResult({ summary: data.summary, details: data.details, overall_grade: data.overall_grade })
+      }
+    } catch (error) {
+      console.error('Verify failed:', error)
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   const handleGeneratePodcast = async () => {
     const reportText = improvedReport || fullReport || rawMarkdown
     if (!reportText) return
@@ -1525,12 +1568,100 @@ export default function Home() {
 
                 {/* Proceed to Review */}
                 {generated && (
-                  <button
-                    onClick={() => setStep(2)}
-                    className="mt-4 w-full rounded-full bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg"
-                  >
-                    PROCEED TO REVIEW →
-                  </button>
+                  <>
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={() => setStep(2)}
+                        className="flex-1 rounded-full bg-gray-900 px-6 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg"
+                      >
+                        PROCEED TO REVIEW →
+                      </button>
+                      <button
+                        onClick={handleVerify}
+                        disabled={verifying || !file}
+                        className="rounded-full border border-gray-300 px-5 py-3.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        {verifying ? '...' : '🔍 Verify'}
+                      </button>
+                    </div>
+
+                    {/* Verify Results */}
+                    {verifyResult && (
+                      <div className="mt-3 rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-sm font-bold ${
+                              verifyResult.overall_grade === 'A' ? 'bg-emerald-100 text-emerald-700' :
+                              verifyResult.overall_grade === 'B' ? 'bg-blue-100 text-blue-700' :
+                              verifyResult.overall_grade === 'C' ? 'bg-amber-100 text-amber-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              Grade: {verifyResult.overall_grade}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              {verifyResult.summary.accuracy_score}% accuracy
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => setVerifyExpanded(!verifyExpanded)}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            {verifyExpanded ? 'Collapse' : 'Details'}
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-[11px]">
+                          <span className="text-gray-600">
+                            📊 {verifyResult.summary.total_repos_checked} repos checked
+                          </span>
+                          <span className={verifyResult.summary.repos_with_stat_issues > 0 ? 'text-red-600 font-medium' : 'text-emerald-600'}>
+                            {verifyResult.summary.repos_with_stat_issues > 0
+                              ? `⚠️ ${verifyResult.summary.repos_with_stat_issues} stat issues`
+                              : '✓ Stats accurate'}
+                          </span>
+                          <span className={verifyResult.summary.phantom_features > 0 ? 'text-red-600 font-medium' : 'text-emerald-600'}>
+                            {verifyResult.summary.phantom_features > 0
+                              ? `👻 ${verifyResult.summary.phantom_features} phantom features`
+                              : '✓ No phantoms'}
+                          </span>
+                        </div>
+
+                        {verifyExpanded && verifyResult.details.length > 0 && (
+                          <div className="mt-3 space-y-2 max-h-60 overflow-y-auto">
+                            {verifyResult.details.map((d, i) => (
+                              <details key={i} className="rounded-lg border border-gray-100 p-2">
+                                <summary className="cursor-pointer text-xs font-medium text-gray-700 flex items-center justify-between">
+                                  <span>{d.repo}</span>
+                                  <span className="flex gap-2">
+                                    {d.stat_issues.length > 0 && (
+                                      <span className="text-red-500">{d.stat_issues.length} stat issue{d.stat_issues.length > 1 ? 's' : ''}</span>
+                                    )}
+                                    {d.phantom_bullets.length > 0 && (
+                                      <span className="text-red-500">{d.phantom_bullets.length} phantom{d.phantom_bullets.length > 1 ? 's' : ''}</span>
+                                    )}
+                                    {d.stat_issues.length === 0 && d.phantom_bullets.length === 0 && (
+                                      <span className="text-emerald-500">✓</span>
+                                    )}
+                                  </span>
+                                </summary>
+                                <div className="mt-2 space-y-1">
+                                  {d.stat_issues.map((s, j) => (
+                                    <div key={j} className="text-[10px] text-red-600">
+                                      {s.metric}: stated {s.stated}, actual {s.actual}
+                                    </div>
+                                  ))}
+                                  {d.phantom_bullets.map((b, j) => (
+                                    <div key={j} className="text-[10px] text-orange-600">
+                                      👻 {b.length > 100 ? b.slice(0, 100) + '...' : b}
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -1989,7 +2120,69 @@ export default function Home() {
                     </button>
                   </>
                 )}
+                {file && fullReport && (
+                  <button
+                    onClick={handleVerify}
+                    disabled={verifying}
+                    className="rounded-lg bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-600 transition disabled:opacity-50"
+                  >
+                    {verifying ? '⏳ Verifying...' : '🔍 Verify Report'}
+                  </button>
+                )}
               </div>
+              {verifyResult && (
+                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className={`text-2xl font-bold ${
+                      verifyResult.overall_grade === 'A' ? 'text-green-600' :
+                      verifyResult.overall_grade === 'B' ? 'text-blue-600' :
+                      verifyResult.overall_grade === 'C' ? 'text-yellow-600' : 'text-red-600'
+                    }`}>
+                      {verifyResult.overall_grade}
+                    </span>
+                    <span className="text-gray-600">Accuracy Score: {verifyResult.summary?.accuracy_score}%</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <div className="text-gray-400">Stats Accuracy</div>
+                      <div className="font-semibold">{(verifyResult.summary?.total_repos_checked || 0) - (verifyResult.summary?.repos_with_stat_issues || 0)}/{verifyResult.summary?.total_repos_checked} repos correct</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Phantom Features</div>
+                      <div className="font-semibold">{verifyResult.summary?.phantom_features || 0} / {verifyResult.summary?.total_accomplishments || 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-400">Invented Contributors</div>
+                      <div className="font-semibold">{verifyResult.summary?.invented_contributors || 0}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setVerifyExpanded(!verifyExpanded)}
+                    className="mt-2 text-xs text-blue-500 hover:underline"
+                  >
+                    {verifyExpanded ? '▼ Hide Details' : '▶ Show Details'}
+                  </button>
+                  {verifyExpanded && verifyResult.details && (
+                    <div className="mt-2 max-h-64 overflow-y-auto text-xs">
+                      {verifyResult.details.filter((d: any) => d.stat_issues?.length > 0 || d.phantom_bullets?.length > 0).map((d: any, i: number) => (
+                        <div key={i} className="border-t border-gray-200 py-2">
+                          <div className="font-semibold">{d.repo}</div>
+                          {d.stat_issues?.length > 0 && (
+                            <div className="text-red-500 ml-2">
+                              Stats: {d.stat_issues.map((s: any) => `${s.metric}: ${s.stated} vs ${s.actual}`).join(', ')}
+                            </div>
+                          )}
+                          {d.phantom_bullets?.length > 0 && (
+                            <div className="text-yellow-600 ml-2">
+                              {d.phantom_bullets.length} phantom feature(s): {d.phantom_bullets.map((p: string) => `"${p.slice(0, 60)}..."`).join('; ')}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Applied changes log */}

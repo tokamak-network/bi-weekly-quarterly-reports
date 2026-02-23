@@ -2284,28 +2284,24 @@ Generate the comprehensive section for {project}:"""
         # Remove any AI-generated GitHub placeholder lines
         response = re.sub(r'\*\*GitHub\*\*:.*?\n', '', response)
 
-        # Force-replace Statistics table with actual data to prevent AI hallucination
-        net = lines_added - lines_deleted
-        correct_stats = (
-            "## Statistics\n"
-            "| Metric | Value |\n"
-            "|--------|-------|\n"
-            "| Commits | {commits} |\n"
-            "| Contributors | {contribs} |\n"
-            "| Lines Added | +{added:,} |\n"
-            "| Lines Deleted | -{deleted:,} |\n"
-            "| Net Change | {net_sign}{net_val:,} |"
-        ).format(
-            commits=total_commits,
-            contribs=contributor_count,
-            added=lines_added,
-            deleted=lines_deleted,
-            net_sign='+' if net >= 0 else '',
-            net_val=net,
+        # Force-replace AI stats with real numbers
+        stats_table = """## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | {} |
+| Contributors | {} |
+| Lines Added | +{:,} |
+| Lines Deleted | -{:,} |
+| Net Change | {}{:,} |""".format(
+            total_commits, contributor_count, lines_added, lines_deleted,
+            '+' if lines_added >= lines_deleted else '', lines_added - lines_deleted
         )
-        # Replace AI-generated stats table
-        stats_pattern = r'##\s*Statistics\s*\n\|[^\n]*\|\s*\n\|[-| ]+\|\s*\n(?:\|[^\n]*\|\s*\n?)+'
-        response = re.sub(stats_pattern, correct_stats, response)
+        # Replace AI-generated stats section
+        response = re.sub(
+            r'## Statistics.*?(?=\n## |\n# |\Z)',
+            stats_table + '\n\n',
+            response, count=1, flags=re.DOTALL
+        )
 
         # Insert proper GitHub link after the repository title
         lines = response.split('\n')
@@ -3780,6 +3776,486 @@ async def generate_podcast_audio(
             "success": False,
             "error": f"Audio generation failed: {str(e)}"
         })
+
+
+# ── Report Verification / Hallucination Check ─────────────────────────────
+
+STOP_WORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "into", "been", "were",
+    "have", "more", "also", "which", "than", "their", "about", "would", "will",
+    "could", "should", "being", "these", "those", "such", "over", "only", "each",
+    "both", "most", "some", "when", "where", "what", "other", "based", "using",
+    "used", "between", "through", "during", "after", "before", "under", "within",
+    "across", "along", "while", "since", "until", "above", "below", "around",
+    "among", "against", "added", "lines", "code", "new", "update", "updates",
+    "improved", "implemented", "created", "developed", "enhanced", "system",
+    "support", "project", "repository", "feature", "features", "changes",
+    "including", "initial", "commit", "merge", "branch", "main", "fix", "fixes",
+    "not", "are", "was", "has", "had", "but", "can", "all", "its", "one", "two",
+}
+
+
+def _extract_keywords(text):
+    """Extract meaningful keywords from text."""
+    import re as _re
+    words = _re.findall(r'[a-zA-Z]{3,}', text.lower())
+    return set(w for w in words if w not in STOP_WORDS)
+
+
+def _check_phantom(bullet_text, commit_messages):
+    """Check if a bullet point can be traced to commit messages."""
+    bullet_kw = _extract_keywords(bullet_text)
+    if len(bullet_kw) < 2:
+        return False  # Too few keywords to judge
+    all_commit_text = ' '.join(commit_messages).lower()
+    matched = sum(1 for kw in bullet_kw if kw in all_commit_text)
+    return matched < 2  # Phantom if fewer than 2 keywords match
+
+
+@app.post("/api/verify")
+async def verify_report(
+    file: UploadFile = File(...),
+    report_text: str = Form(...),
+    report_grouping: str = Form("repository"),
+):
+    """Verify a generated report against source CSV for hallucination detection."""
+    import re as _re
+    import io
+
+    # Parse CSV
+    content = await file.read()
+    text = content.decode('utf-8')
+    reader = csv.DictReader(io.StringIO(text))
+    rows = list(reader)
+
+    # Build ground truth per repo
+    ground_truth = {}  # type: Dict[str, Dict]
+    for row in rows:
+        repo = row.get('repository', row.get('repo', '')).strip()
+        if not repo:
+            continue
+        if repo not in ground_truth:
+            ground_truth[repo] = {
+                'commits': 0,
+                'contributors': set(),
+                'messages': [],
+                'lines_added': 0,
+                'lines_deleted': 0,
+            }
+        gt = ground_truth[repo]
+        gt['commits'] += 1
+        author = row.get('member_id', row.get('author', row.get('member_name', ''))).strip()
+        if author:
+            gt['contributors'].add(author)
+        msg = row.get('message', row.get('commit_message', '')).strip()
+        if msg:
+            gt['messages'].append(msg)
+        try:
+            gt['lines_added'] += int(row.get('additions', 0) or 0)
+        except (ValueError, TypeError):
+            pass
+        try:
+            gt['lines_deleted'] += int(row.get('deletions', 0) or 0)
+        except (ValueError, TypeError):
+            pass
+
+    # Parse report markdown per repo
+    # Support # Repo, ## Repo patterns
+    repo_sections = {}  # type: Dict[str, Dict]
+    repo_pattern = _re.compile(r'^#{1,2} ([^#\n].+)$', _re.MULTILINE)
+    matches = list(repo_pattern.finditer(report_text))
+
+    for i, m in enumerate(matches):
+        rname = m.group(1).strip().strip('*')
+        # Skip report-level headings
+        if any(kw in rname.lower() for kw in ['tokamak network', 'development report', 'update', 'ecosystem', 'executive']):
+            continue
+        # Skip sub-sections like Overview, Statistics, etc.
+        if any(kw in rname.lower() for kw in ['overview', 'statistics', 'period goal', 'key accomplish', 'code analysis', 'next step', 'highlight']):
+            continue
+
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(report_text)
+        section = report_text[start:end]
+
+        # Extract stated stats
+        stats = {}
+        commits_m = _re.search(r'Commits\s*\|\s*(\d[\d,]*)', section)
+        if commits_m:
+            stats['commits'] = int(commits_m.group(1).replace(',', ''))
+        contribs_m = _re.search(r'Contributors\s*\|\s*(\d[\d,]*)', section)
+        if contribs_m:
+            stats['contributors'] = int(contribs_m.group(1).replace(',', ''))
+        added_m = _re.search(r'Lines Added\s*\|\s*\+?([\d,]+)', section)
+        if added_m:
+            stats['lines_added'] = int(added_m.group(1).replace(',', ''))
+        deleted_m = _re.search(r'Lines Deleted\s*\|\s*-?([\d,]+)', section)
+        if deleted_m:
+            stats['lines_deleted'] = int(deleted_m.group(1).replace(',', ''))
+
+        # Extract accomplishment bullets
+        acc_section = _re.search(r'(?:Key Accomplishments|Key Work).*?(?=\n## |\n# |\Z)', section, _re.DOTALL | _re.IGNORECASE)
+        bullets = []
+        if acc_section:
+            bullets = _re.findall(r'[*\-]\s+\*?\*?(.+?)(?:\n|$)', acc_section.group(0))
+
+        repo_sections[rname] = {'stats': stats, 'bullets': [b.strip() for b in bullets]}
+
+    # Compare
+    details = []
+    total_accomplishments = 0
+    phantom_count = 0
+    stat_issue_count = 0
+    invented_contribs = 0
+    all_csv_contributors = set()
+    for gt in ground_truth.values():
+        all_csv_contributors.update(gt['contributors'])
+
+    for repo_name, report_data in repo_sections.items():
+        gt = ground_truth.get(repo_name, None)
+        if not gt:
+            # Try partial match
+            for gt_name, gt_data in ground_truth.items():
+                if gt_name.lower() == repo_name.lower() or gt_name in repo_name or repo_name in gt_name:
+                    gt = gt_data
+                    break
+
+        detail = {
+            'repo': repo_name,
+            'stats_accurate': True,
+            'stat_details': {},
+            'accomplishments_total': len(report_data['bullets']),
+            'phantom_count': 0,
+            'phantom_items': [],
+            'contributors_ok': True,
+        }
+
+        if gt:
+            # Check stats
+            reported = report_data['stats']
+            checks = {
+                'commits': (reported.get('commits'), gt['commits']),
+                'contributors': (reported.get('contributors'), len(gt['contributors'])),
+                'lines_added': (reported.get('lines_added'), gt['lines_added']),
+                'lines_deleted': (reported.get('lines_deleted'), gt['lines_deleted']),
+            }
+            for metric, (rep, actual) in checks.items():
+                if rep is not None and actual > 0:
+                    tolerance = max(1, int(actual * 0.05))
+                    match = abs(rep - actual) <= tolerance
+                    detail['stat_details'][metric] = {
+                        'reported': rep, 'actual': actual, 'match': match
+                    }
+                    if not match:
+                        detail['stats_accurate'] = False
+
+            # Check phantom features
+            for bullet in report_data['bullets']:
+                total_accomplishments += 1
+                if _check_phantom(bullet, gt['messages']):
+                    detail['phantom_count'] += 1
+                    phantom_count += 1
+                    detail['phantom_items'].append(bullet[:100])
+        else:
+            total_accomplishments += len(report_data['bullets'])
+
+        if not detail['stats_accurate']:
+            stat_issue_count += 1
+
+        details.append(detail)
+
+    # Calculate score
+    total_checks = max(1, len(repo_sections))
+    stat_score = ((total_checks - stat_issue_count) / total_checks) * 50
+    phantom_score = ((max(1, total_accomplishments) - phantom_count) / max(1, total_accomplishments)) * 50
+    accuracy_score = int(stat_score + phantom_score)
+
+    if accuracy_score >= 90:
+        grade = "A"
+    elif accuracy_score >= 80:
+        grade = "B+"
+    elif accuracy_score >= 70:
+        grade = "B"
+    elif accuracy_score >= 60:
+        grade = "C"
+    elif accuracy_score >= 50:
+        grade = "D"
+    else:
+        grade = "F"
+
+    return {
+        "success": True,
+        "summary": {
+            "total_repos_checked": len(repo_sections),
+            "repos_with_stat_issues": stat_issue_count,
+            "total_accomplishments": total_accomplishments,
+            "phantom_features": phantom_count,
+            "invented_contributors": invented_contribs,
+            "accuracy_score": accuracy_score,
+        },
+        "details": details,
+        "overall_grade": grade,
+    }
+
+
+# ================================================================
+# Report Verification (Hallucination Check)
+# ================================================================
+
+VERIFY_STOP_WORDS = {
+    "the", "and", "for", "with", "this", "that", "from", "into", "been", "were",
+    "have", "more", "also", "which", "than", "their", "about", "would", "will",
+    "could", "should", "being", "these", "those", "such", "over", "only", "each",
+    "both", "most", "some", "when", "where", "what", "other", "based", "using",
+    "used", "between", "through", "during", "after", "before", "under", "within",
+    "across", "along", "while", "since", "until", "above", "below", "around",
+    "among", "against",
+}
+
+
+def _parse_csv_ground_truth(content: str, report_grouping: str) -> Dict[str, Dict[str, Any]]:
+    """Parse CSV into per-repo (or per-project) ground truth."""
+    groups: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+        "commits": 0,
+        "contributors": set(),
+        "messages": [],
+        "lines_added": 0,
+        "lines_deleted": 0,
+    })
+    reader = csv.DictReader(io.StringIO(content))
+    for row in reader:
+        if row.get("source") != "github":
+            continue
+        repo = row.get("repository", "").strip('"')
+        if not repo:
+            continue
+        entry_type = row.get("type", "")
+        if entry_type != "commit":
+            continue
+        message = (row.get("message") or "").strip('"')
+        if message.lower().startswith("merge "):
+            continue
+
+        if report_grouping == "repository":
+            key = repo
+        else:
+            key = get_project_for_repo(repo) or repo
+
+        member_name = row.get("member_name", "").strip('"')
+        member_email = row.get("member_email", "").strip('"')
+        mid, mlabel = normalize_member_identity(member_name, member_email)
+
+        g = groups[key]
+        g["commits"] += 1
+        if mid:
+            g["contributors"].add(mid)
+        if message:
+            g["messages"].append(message.split("\n")[0][:200].lower())
+        try:
+            g["lines_added"] += int(row.get("additions") or 0)
+        except (ValueError, TypeError):
+            pass
+        try:
+            g["lines_deleted"] += int(row.get("deletions") or 0)
+        except (ValueError, TypeError):
+            pass
+
+    # Convert sets to counts for JSON serialization
+    result: Dict[str, Dict[str, Any]] = {}
+    for key, g in groups.items():
+        result[key] = {
+            "commits": g["commits"],
+            "contributor_count": len(g["contributors"]),
+            "contributors": list(g["contributors"]),
+            "messages": g["messages"],
+            "lines_added": g["lines_added"],
+            "lines_deleted": g["lines_deleted"],
+        }
+    return result
+
+
+def _parse_report_sections(report_text: str) -> Dict[str, Dict[str, Any]]:
+    """Parse report markdown into per-repo stated stats and accomplishment bullets."""
+    sections: Dict[str, Dict[str, Any]] = {}
+    current_repo = None
+    current_data: Dict[str, Any] = {"stats": {}, "bullets": []}
+
+    for line in report_text.split("\n"):
+        stripped = line.strip()
+        # Detect section headers (# RepoName or ## RepoName)
+        header_match = re.match(r'^#{1,3}\s+(.+)$', stripped)
+        if header_match:
+            # Save previous section
+            if current_repo:
+                sections[current_repo] = current_data
+            header_text = header_match.group(1).strip()
+            # Skip non-repo headers
+            if header_text.lower() in ("statistics", "overview", "period goals", "key accomplishments",
+                                        "code analysis", "next steps", "executive summary"):
+                continue
+            current_repo = header_text
+            current_data = {"stats": {}, "bullets": []}
+            continue
+
+        if not current_repo:
+            continue
+
+        # Parse stats from table rows
+        table_match = re.match(r'^\|\s*(\w[\w\s]*?)\s*\|\s*([^|]+?)\s*\|', stripped)
+        if table_match:
+            metric = table_match.group(1).strip().lower()
+            value_str = table_match.group(2).strip()
+            # Extract numeric value
+            num_match = re.search(r'[+-]?([\d,]+)', value_str)
+            if num_match and metric not in ("metric",):
+                try:
+                    val = int(num_match.group(1).replace(",", ""))
+                    current_data["stats"][metric] = val
+                except (ValueError, TypeError):
+                    pass
+            continue
+
+        # Parse bullet points
+        bullet_match = re.match(r'^[\*\-]\s+(.+)$', stripped)
+        if bullet_match:
+            current_data["bullets"].append(bullet_match.group(1))
+
+    # Save last section
+    if current_repo:
+        sections[current_repo] = current_data
+
+    return sections
+
+
+def _extract_keywords(text: str) -> set:
+    """Extract 3+ char words excluding stop words."""
+    words = re.findall(r'[a-zA-Z]{3,}', text.lower())
+    return set(w for w in words if w not in VERIFY_STOP_WORDS)
+
+
+def _check_phantom_feature(bullet: str, messages: List[str]) -> bool:
+    """Check if at least 2 keywords from the bullet appear in ANY commit message."""
+    keywords = _extract_keywords(bullet)
+    if len(keywords) < 2:
+        return False  # Too few keywords to check
+
+    for msg in messages:
+        msg_words = set(re.findall(r'[a-zA-Z]{3,}', msg.lower()))
+        overlap = keywords & msg_words
+        if len(overlap) >= 2:
+            return False  # Found support — not phantom
+    return True  # No commit message supports this bullet
+
+
+@app.post("/api/verify")
+async def verify_report(
+    file: UploadFile = File(...),
+    report_text: str = Form(...),
+    report_grouping: str = Form("repository"),
+):
+    """Verify a generated report against the source CSV for hallucinations."""
+    try:
+        content = await file.read()
+        content_str = content.decode("utf-8")
+
+        ground_truth = _parse_csv_ground_truth(content_str, report_grouping)
+        report_sections = _parse_report_sections(report_text)
+
+        details = []
+        total_repos_checked = 0
+        repos_with_stat_issues = 0
+        total_accomplishments = 0
+        phantom_features = 0
+        invented_contributors = 0
+
+        # Match report sections to ground truth
+        for repo_name, section_data in report_sections.items():
+            # Try exact match first, then case-insensitive
+            gt = ground_truth.get(repo_name)
+            if gt is None:
+                for gt_key, gt_val in ground_truth.items():
+                    if gt_key.lower() == repo_name.lower():
+                        gt = gt_val
+                        break
+
+            if gt is None:
+                continue  # No ground truth for this section
+
+            total_repos_checked += 1
+            repo_detail: Dict[str, Any] = {
+                "repo": repo_name,
+                "stat_issues": [],
+                "phantom_bullets": [],
+                "invented_contributors": [],
+            }
+
+            # Check stats (±5% tolerance)
+            stated_stats = section_data.get("stats", {})
+            stat_checks = [
+                ("commits", gt["commits"]),
+                ("contributors", gt["contributor_count"]),
+                ("lines added", gt["lines_added"]),
+                ("lines deleted", gt["lines_deleted"]),
+            ]
+            has_stat_issue = False
+            for metric, actual in stat_checks:
+                stated = stated_stats.get(metric)
+                if stated is None:
+                    continue
+                tolerance = max(1, int(actual * 0.05))
+                if abs(stated - actual) > tolerance:
+                    repo_detail["stat_issues"].append({
+                        "metric": metric,
+                        "stated": stated,
+                        "actual": actual,
+                    })
+                    has_stat_issue = True
+
+            if has_stat_issue:
+                repos_with_stat_issues += 1
+
+            # Check accomplishment bullets for phantom features
+            bullets = section_data.get("bullets", [])
+            total_accomplishments += len(bullets)
+            for bullet in bullets:
+                if _check_phantom_feature(bullet, gt["messages"]):
+                    repo_detail["phantom_bullets"].append(bullet)
+                    phantom_features += 1
+
+            details.append(repo_detail)
+
+        # Calculate accuracy score (0-100)
+        total_checks = total_accomplishments + (total_repos_checked * 4)  # 4 stats per repo
+        total_issues = phantom_features + sum(len(d["stat_issues"]) for d in details) + invented_contributors
+        accuracy_score = round(max(0, 100 - (total_issues / max(1, total_checks) * 100)), 1)
+
+        # Grade
+        if accuracy_score >= 95:
+            grade = "A"
+        elif accuracy_score >= 85:
+            grade = "B"
+        elif accuracy_score >= 70:
+            grade = "C"
+        elif accuracy_score >= 50:
+            grade = "D"
+        else:
+            grade = "F"
+
+        return JSONResponse({
+            "success": True,
+            "summary": {
+                "total_repos_checked": total_repos_checked,
+                "repos_with_stat_issues": repos_with_stat_issues,
+                "total_accomplishments": total_accomplishments,
+                "phantom_features": phantom_features,
+                "invented_contributors": invented_contributors,
+                "accuracy_score": accuracy_score,
+            },
+            "details": details,
+            "overall_grade": grade,
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
