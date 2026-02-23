@@ -2089,33 +2089,40 @@ Structure your output EXACTLY as follows:
 Write 2-3 sentences explaining what this repository/project is, its purpose in the Tokamak ecosystem, and why it matters to users and investors.
 
 ## Statistics
+DO NOT generate or modify these numbers. Copy EXACTLY from the [Statistics for This Period] section provided above:
 | Metric | Value |
 |--------|-------|
-| Commits | [number] |
-| Contributors | [number] |
-| Lines Added | +[number] |
-| Lines Deleted | -[number] |
-| Net Change | [+/-number] |
+| Commits | [EXACT number from input] |
+| Contributors | [EXACT number from input] |
+| Lines Added | [EXACT number from input] |
+| Lines Deleted | [EXACT number from input] |
+| Net Change | [EXACT number from input] |
 
 ## Period Goals
-Describe in 2-3 sentences what the team aimed to accomplish during this reporting period. What were the key objectives?
+Describe in 2-3 sentences what the team aimed to accomplish during this reporting period, based on the commit messages and PRs provided.
 
 ## Key Accomplishments
-List ALL significant work done. Each bullet should:
+CRITICAL RULE: ONLY describe work that is directly evidenced by the commit messages and PR titles provided above.
+- Do NOT invent, infer, or speculate about features not mentioned in the commits/PRs.
+- Each bullet MUST trace back to at least one specific commit message or PR title.
+- If a repo has few commits with vague messages, write fewer bullets rather than fabricating details.
+
+List significant work done. Each bullet should:
 - Start with a strong action verb
 - Explain the technical change AND its user/business impact
-- Be detailed enough that investors understand the value
+- Be grounded in actual commit messages provided
 
 Use this format:
-* **[Action Phrase]**: [Detailed explanation of what was done and why it matters]
+* **[Action Phrase]**: [Explanation based on actual commits/PRs]
 
 Scale the number of bullets to the actual work done. Major repos (50+ commits): 8-12 bullets. Medium repos (10-50 commits): 4-8 bullets. Small repos (1-10 commits): 2-4 bullets. Do NOT inflate minimal work into many bullets.
 
 ## Code Analysis
-Explain what the lines added/deleted represent:
-- What new features or capabilities were added?
+Explain what the lines added/deleted represent based on the commit messages:
+- What new features or capabilities were added? (cite specific commits)
 - What was optimized, refactored, or cleaned up?
 - What does this indicate about the project's maturity?
+ONLY reference work evidenced in the provided commits. Do not speculate.
 
 ## Next Steps
 Briefly mention what's planned next for this repository (1-2 sentences).
@@ -2276,11 +2283,35 @@ Generate the comprehensive section for {project}:"""
             response = re.sub(pat, '', response, flags=re.IGNORECASE | re.MULTILINE)
         # Remove any AI-generated GitHub placeholder lines
         response = re.sub(r'\*\*GitHub\*\*:.*?\n', '', response)
+
+        # Force-replace Statistics table with actual data to prevent AI hallucination
+        net = lines_added - lines_deleted
+        correct_stats = (
+            "## Statistics\n"
+            "| Metric | Value |\n"
+            "|--------|-------|\n"
+            "| Commits | {commits} |\n"
+            "| Contributors | {contribs} |\n"
+            "| Lines Added | +{added:,} |\n"
+            "| Lines Deleted | -{deleted:,} |\n"
+            "| Net Change | {net_sign}{net_val:,} |"
+        ).format(
+            commits=total_commits,
+            contribs=contributor_count,
+            added=lines_added,
+            deleted=lines_deleted,
+            net_sign='+' if net >= 0 else '',
+            net_val=net,
+        )
+        # Replace AI-generated stats table
+        stats_pattern = r'##\s*Statistics\s*\n\|[^\n]*\|\s*\n\|[-| ]+\|\s*\n(?:\|[^\n]*\|\s*\n?)+'
+        response = re.sub(stats_pattern, correct_stats, response)
+
         # Insert proper GitHub link after the repository title
         lines = response.split('\n')
         for i, line in enumerate(lines):
             if line.startswith('## ') or line.startswith('# '):
-                lines.insert(i + 1, f"\n**GitHub**: [Link]({github_url})\n")
+                lines.insert(i + 1, "\n**GitHub**: [Link]({})\n".format(github_url))
                 break
         response = '\n'.join(lines)
         return response + "\n\n"
