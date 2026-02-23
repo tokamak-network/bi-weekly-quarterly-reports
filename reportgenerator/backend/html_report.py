@@ -219,6 +219,9 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
 
         result["repos"].append(repo)
 
+    # Sort repos alphabetically, keep "Other repos" at end
+    result["repos"].sort(key=lambda r: (r["name"].lower() == "other repos", r["name"].lower()))
+
     return result
 
 

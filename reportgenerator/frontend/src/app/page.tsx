@@ -2120,69 +2120,7 @@ export default function Home() {
                     </button>
                   </>
                 )}
-                {file && fullReport && (
-                  <button
-                    onClick={handleVerify}
-                    disabled={verifying}
-                    className="rounded-lg bg-purple-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-600 transition disabled:opacity-50"
-                  >
-                    {verifying ? '⏳ Verifying...' : '🔍 Verify Report'}
-                  </button>
-                )}
               </div>
-              {verifyResult && (
-                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className={`text-2xl font-bold ${
-                      verifyResult.overall_grade === 'A' ? 'text-green-600' :
-                      verifyResult.overall_grade === 'B' ? 'text-blue-600' :
-                      verifyResult.overall_grade === 'C' ? 'text-yellow-600' : 'text-red-600'
-                    }`}>
-                      {verifyResult.overall_grade}
-                    </span>
-                    <span className="text-gray-600">Accuracy Score: {verifyResult.summary?.accuracy_score}%</span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4 text-xs">
-                    <div>
-                      <div className="text-gray-400">Stats Accuracy</div>
-                      <div className="font-semibold">{(verifyResult.summary?.total_repos_checked || 0) - (verifyResult.summary?.repos_with_stat_issues || 0)}/{verifyResult.summary?.total_repos_checked} repos correct</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Phantom Features</div>
-                      <div className="font-semibold">{verifyResult.summary?.phantom_features || 0} / {verifyResult.summary?.total_accomplishments || 0}</div>
-                    </div>
-                    <div>
-                      <div className="text-gray-400">Invented Contributors</div>
-                      <div className="font-semibold">{verifyResult.summary?.invented_contributors || 0}</div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setVerifyExpanded(!verifyExpanded)}
-                    className="mt-2 text-xs text-blue-500 hover:underline"
-                  >
-                    {verifyExpanded ? '▼ Hide Details' : '▶ Show Details'}
-                  </button>
-                  {verifyExpanded && verifyResult.details && (
-                    <div className="mt-2 max-h-64 overflow-y-auto text-xs">
-                      {verifyResult.details.filter((d: any) => d.stat_issues?.length > 0 || d.phantom_bullets?.length > 0).map((d: any, i: number) => (
-                        <div key={i} className="border-t border-gray-200 py-2">
-                          <div className="font-semibold">{d.repo}</div>
-                          {d.stat_issues?.length > 0 && (
-                            <div className="text-red-500 ml-2">
-                              Stats: {d.stat_issues.map((s: any) => `${s.metric}: ${s.stated} vs ${s.actual}`).join(', ')}
-                            </div>
-                          )}
-                          {d.phantom_bullets?.length > 0 && (
-                            <div className="text-yellow-600 ml-2">
-                              {d.phantom_bullets.length} phantom feature(s): {d.phantom_bullets.map((p: string) => `"${p.slice(0, 60)}..."`).join('; ')}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Applied changes log */}
