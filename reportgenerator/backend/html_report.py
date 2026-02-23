@@ -84,9 +84,42 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
     }
 
     # Split into headline section and repo sections
-    # The headline section is everything before the first ## (repo section)
-    repo_pattern = re.compile(r'^## (.+)$', re.MULTILINE)
-    repo_matches = list(repo_pattern.finditer(markdown))
+    # AI outputs use either `# Repo` + `## Sub` OR `## Repo` + `### Sub`
+    # Detect which pattern is used by checking for `# RepoName` (h1) repo headers
+    h1_repo_pattern = re.compile(r'^# ([^#\n].+)$', re.MULTILINE)
+    h2_repo_pattern = re.compile(r'^## ([^#\n].+)$', re.MULTILINE)
+
+    h1_matches = list(h1_repo_pattern.finditer(markdown))
+    h2_matches = list(h2_repo_pattern.finditer(markdown))
+
+    # If we have h1 repo sections with h2 subsections, use h1 as repo level
+    # Filter out headline-like h1s (e.g. "Tokamak Network..." at the very top)
+    real_h1_repos = []
+    for m in h1_matches:
+        name = m.group(1).strip()
+        # Skip if it looks like a report title rather than a repo name
+        if any(kw in name.lower() for kw in ['tokamak network', 'development report', 'biweekly', 'update', 'ecosystem']):
+            continue
+        real_h1_repos.append(m)
+
+    h3_repo_pattern = re.compile(r'^### ([^#\n].+)$', re.MULTILINE)
+    h3_matches = list(h3_repo_pattern.finditer(markdown))
+
+    if len(real_h1_repos) >= 2:
+        # Pattern: # RepoName → ## Subsection
+        repo_matches = real_h1_repos
+        sub_pattern = r'^## (.+)$'
+    elif len(h2_matches) >= 2:
+        # Pattern: ## RepoName → ### Subsection
+        repo_matches = h2_matches
+        sub_pattern = r'^### (.+)$'
+    elif len(h3_matches) >= 2:
+        # Pattern: ### RepoName (no subsection headers, just bullets)
+        repo_matches = h3_matches
+        sub_pattern = r'^#### (.+)$'
+    else:
+        repo_matches = []
+        sub_pattern = r'^### (.+)$'
 
     if repo_matches:
         header_text = markdown[:repo_matches[0].start()].strip()
@@ -134,34 +167,55 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
             "period_goals": "",
         }
 
-        # Extract GitHub URL
-        gh_match = re.search(r'\*\*GitHub\*\*:\s*(https?://\S+)', section_text)
+        # Extract GitHub URL from [Link](url) or raw URL
+        gh_match = re.search(r'\[Link\]\((https?://\S+?)\)', section_text)
+        if not gh_match:
+            gh_match = re.search(r'\*\*GitHub\*\*:\s*(https?://\S+)', section_text)
         if gh_match:
             repo["github_url"] = gh_match.group(1).strip()
         else:
-            repo["github_url"] = f"{GITHUB_ORG_URL}/{repo_name}"
+            repo["github_url"] = "{}/{}".format(GITHUB_ORG_URL, repo_name)
 
-        # Parse subsections
-        subsections = re.split(r'^### (.+)$', section_text, flags=re.MULTILINE)
-        # subsections[0] is content before first ###
+        # Parse subsections using detected pattern (## or ###)
+        subsections = re.split(sub_pattern, section_text, flags=re.MULTILINE)
+        # subsections[0] is content before first subsection header
         # Then alternating: subsection_name, subsection_content, ...
+
+        # If no subsections found, the overview might be in subsections[0]
+        pre_content = subsections[0].strip() if subsections else ""
+        if pre_content:
+            # Clean out GitHub link lines and stats tables
+            clean_lines = []
+            for line in pre_content.split('\n'):
+                stripped = line.strip()
+                if '**GitHub**' in stripped or '[Link](' in stripped:
+                    continue
+                if stripped.startswith('|') or stripped.startswith('---'):
+                    continue
+                if stripped:
+                    clean_lines.append(stripped)
+            overview_text = ' '.join(clean_lines)
+            if overview_text and len(overview_text) > 30:
+                repo["overview"] = _clean_markdown(overview_text)
 
         for j in range(1, len(subsections), 2):
             sub_name = subsections[j].strip().lower()
             sub_content = subsections[j + 1].strip() if j + 1 < len(subsections) else ""
 
-            if 'overview' in sub_name:
+            if 'overview' in sub_name or 'summary' in sub_name:
                 repo["overview"] = _clean_markdown(sub_content)
-            elif 'accomplishment' in sub_name or 'key work' in sub_name:
+            elif 'accomplishment' in sub_name or 'key work' in sub_name or 'highlight' in sub_name:
                 # Parse bullet points
                 bullets = re.findall(r'[*\-]\s+\*?\*?(.+?)(?:\n|$)', sub_content)
-                repo["accomplishments"] = [_clean_markdown(b.strip().rstrip('*')) for b in bullets]
-            elif 'code analysis' in sub_name:
+                repo["accomplishments"] = [_clean_markdown(b.strip().rstrip('*')) for b in bullets if b.strip()]
+            elif 'code analysis' in sub_name or 'code change' in sub_name:
                 repo["code_analysis"] = _clean_markdown(sub_content)
-            elif 'next step' in sub_name:
+            elif 'next step' in sub_name or 'looking ahead' in sub_name:
                 repo["next_steps"] = _clean_markdown(sub_content)
-            elif 'period goal' in sub_name:
+            elif 'period goal' in sub_name or 'objective' in sub_name:
                 repo["period_goals"] = _clean_markdown(sub_content)
+            elif 'statistic' in sub_name:
+                continue  # Skip stats table subsection
 
         result["repos"].append(repo)
 
