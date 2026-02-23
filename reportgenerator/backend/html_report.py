@@ -315,7 +315,7 @@ def generate_html_report(
 
     # Build repo cards HTML
     repo_cards_html = ""
-    sorted_repos = sorted(summaries.items(), key=lambda x: x[1].get("total_commits", 0), reverse=True)
+    sorted_repos = sorted(summaries.items(), key=lambda x: (x[0].lower() == "other repos", x[0].lower()))
     
     for repo_name, summary in sorted_repos:
         if repo_name == "Other repos":
