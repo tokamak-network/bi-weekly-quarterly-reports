@@ -2078,7 +2078,8 @@ def _format_instructions_comprehensive() -> str:
     """Format C (Comprehensive): Full detailed analysis per repository."""
     return """[Output Format: Comprehensive (Format C)]
 
-Generate a detailed, impactful report section for this repository. This report is for investors and stakeholders who want to understand the FULL scope of work.
+Generate a detailed, factual report section for this repository. This report is for investors and stakeholders who want to understand the scope of work done.
+Write in a professional, measured tone. Avoid promotional or hyperbolic language (no "massive", "explosive", "groundbreaking", "revolutionary"). Let the work speak for itself.
 
 Structure your output EXACTLY as follows:
 
@@ -2136,31 +2137,35 @@ def generate_comprehensive_headline(all_summaries: dict, date_range: dict, model
     def fmt(n: int) -> str:
         return f"{n:,}"
 
-    prompt = f"""You are writing the HEADLINE section of an executive report for Tokamak Network.
+    prompt = f"""Write the executive summary for a Tokamak Network engineering progress report.
 
-This report covers {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}.
+Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}
 
-KEY STATISTICS:
-- Total Repositories Active: {total_repos}
+Statistics:
+- Active Repositories: {total_repos}
 - Total Commits: {fmt(total_commits)}
-- Total Contributors: {total_contributors}
+- Contributors: {total_contributors}
 - Lines Added: +{fmt(total_additions)}
 - Lines Deleted: -{fmt(total_deletions)}
 - Net Change: {'+' if net_change >= 0 else ''}{fmt(net_change)}
 - Total Code Changes: {fmt(total_changes)}
 
-Generate a HEADLINE section that creates IMPACT. Think of this as the front page of a financial newspaper.
+Output ONLY the following (no preamble, no "Here is..." intro):
+1. A concise, factual headline summarizing the period's work (1 line, no emoji)
+2. A subheadline with one key insight (1 line)
+3. An executive summary paragraph (3-4 sentences) explaining what these numbers represent
 
-Output format:
-1. A bold, attention-grabbing headline (1 line)
-2. A subheadline expanding on the headline (1 line)
-3. An executive summary paragraph (3-4 sentences) explaining what these numbers mean and why investors should be excited
+Tone guidelines:
+- Professional and factual, like an engineering progress update
+- Avoid promotional or hyperbolic language (no "massive", "explosive", "record-breaking", "surges")
+- Let the numbers speak for themselves
+- Focus on what was built and why it matters, not on selling excitement
 
 Example tone:
-"🚀 Tokamak Network: 4.9 Million Lines of Code Transformed in 14 Days"
-"73 Repositories, 287 Contributors Drive Massive Infrastructure Expansion"
+"Tokamak Network: 4.9 Million Code Changes Across 73 Repositories"
+"Sustained development velocity with {total_contributors} contributors driving infrastructure and product improvements"
 
-Make the numbers PROMINENT and the implications CLEAR. This should make investors want to read more."""
+Do NOT include any meta text like "Here is the headline" or "Below is the summary". Output the content directly."""
 
     if not has_tokamak_client(model):
         # Fallback to basic headline
@@ -2186,6 +2191,15 @@ Make the numbers PROMINENT and the implications CLEAR. This should make investor
 
     response = generate_with_llm(prompt, max_tokens=800, model=model)
     if response:
+        # Strip AI meta-text preambles
+        import re as _re
+        meta_patterns = [
+            r'^(?:Here is|Below is|I\'ve written|This is|Sure[,!]?).*?(?:headline|summary|section|report).*?\n+',
+            r'^(?:Certainly|Of course|Absolutely)[.!,]?\s*\n+',
+        ]
+        for pat in meta_patterns:
+            response = _re.sub(pat, '', response, flags=_re.IGNORECASE | _re.MULTILINE)
+        response = response.strip()
         return f"# Tokamak Network Development Report\n\n**{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**\n\n{response}\n\n---\n\n"
     return f"# Tokamak Network Development Report\n\n**{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**\n\n---\n\n"
 
@@ -2214,8 +2228,10 @@ def generate_with_ai_comprehensive(project: str, summary: dict, info: dict, mode
     format_instructions = _format_instructions_comprehensive()
 
     prompt = f"""[Role]
-You are writing a COMPREHENSIVE report section for investors and stakeholders of Tokamak Network.
-This section covers ONE repository in detail. Be thorough, specific, and impactful.
+You are writing a detailed report section for investors and stakeholders of Tokamak Network.
+This section covers ONE repository. Be thorough, specific, and factual.
+Use a professional, measured tone. Do not use promotional or exaggerated language.
+Do NOT include any preamble like "Here is..." or "Below is...". Output the content directly.
 
 [Repository Information]
 Name: {project}
@@ -2250,8 +2266,15 @@ Generate the comprehensive section for {project}:"""
 
     response = generate_with_llm(prompt, max_tokens=2000, model=model, timeout_override=180)
     if response:
-        # Remove any AI-generated GitHub placeholder lines
+        # Strip AI meta-text preambles
         import re
+        meta_patterns = [
+            r'^(?:Here is|Below is|I\'ve written|This is|Sure[,!]?).*?(?:section|report|analysis).*?\n+',
+            r'^(?:Certainly|Of course|Absolutely)[.!,]?\s*\n+',
+        ]
+        for pat in meta_patterns:
+            response = re.sub(pat, '', response, flags=re.IGNORECASE | re.MULTILINE)
+        # Remove any AI-generated GitHub placeholder lines
         response = re.sub(r'\*\*GitHub\*\*:.*?\n', '', response)
         # Insert proper GitHub link after the repository title
         lines = response.split('\n')
