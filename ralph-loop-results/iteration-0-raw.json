@@ -1,0 +1,1135 @@
+{
+  "success": true,
+  "report_type": "public",
+  "report_format": "comprehensive",
+  "report_scope": "biweekly",
+  "report_grouping": "project",
+  "model": null,
+  "models": [],
+  "model_reports": {},
+  "date_range": {
+    "start": "2026-02-01",
+    "end": "2026-02-15",
+    "days": 15
+  },
+  "stats": {
+    "total_commits": 560,
+    "total_prs": 10,
+    "total_repos": 14,
+    "total_lines_added": 343857,
+    "total_lines_deleted": 101795,
+    "total_changes": 445652,
+    "net_change": 242062,
+    "total_contributors": 10
+  },
+  "repo_limit_applied": false,
+  "repo_count_total": 0,
+  "repo_count_shown": 0,
+  "highlight": "Tokamak Network advanced staking, privacy, wallet with a focus on practical user impact. Improved staking experience and validator operations. Total: **560** commits, **10** merged PRs across **14** repositories.",
+  "title": "",
+  "headline": "",
+  "full_report": null,
+  "sections": [
+    {
+      "project": "Ooo",
+      "title": "2.2. Zero-Knowledge Proof-Based Private App Channels",
+      "content": "\uc774\ubc88 \ud68c\ucc28\uc5d0\uc11c public commitment split across setup/prove/preprocess/verify, including MetaMask, safer wallet experiences for private transactions, including NTT, privacy and transaction safety for users, including CDP\ub97c \uc911\uc2ec\uc73c\ub85c \uc9c4\ud589 \uc0c1\ud669\uc744 \uc815\ub9ac\ud588\uc2b5\ub2c8\ub2e4.\n* Revolutionary privacy technology that keeps your transactions completely confidential while maintaining full security on Ethereum. Users can conduct private DeFi transactions without revealing sensitive financial data.\n* Improved public commitment split across setup/prove/preprocess/verify.\n* Launched safer wallet experiences for private transactions.\n* Improved privacy and transaction safety for users.\n"
+    },
+    {
+      "project": "Eco",
+      "title": "2.3. TON Staking & Governance: Building a Sustainable Token Economy",
+      "content": "\uc774\ubc88 \ud68c\ucc28\uc5d0\uc11c staking experience and validator operations, including v3, front Demo Update, including RAT, operational visibility with monitoring tools, including UI\ub97c \uc911\uc2ec\uc73c\ub85c \uc9c4\ud589 \uc0c1\ud669\uc744 \uc815\ub9ac\ud588\uc2b5\ub2c8\ub2e4.\n* Staking rewards for TON holders, transparent governance, economic security.\n* Improved staking experience and validator operations.\n* Improved front Demo Update.\n* Improved operational visibility with monitoring tools.\n"
+    },
+    {
+      "project": "TRH",
+      "title": "2.4. Tokamak Rollup Hub: One-Click Layer 2 Deployment",
+      "content": "\uc774\ubc88 \ud68c\ucc28\uc5d0\uc11c mainnet readiness and deployment safety, including WalletConnect, safer wallet experiences for private transactions, including MetaMask, operational visibility with monitoring tools, including DRB\ub97c \uc911\uc2ec\uc73c\ub85c \uc9c4\ud589 \uc0c1\ud669\uc744 \uc815\ub9ac\ud588\uc2b5\ub2c8\ub2e4.\n* Rapid L2 deployment, cost-effective scaling, enterprise-ready infrastructure.\n* Improved mainnet readiness and deployment safety.\n* Launched safer wallet experiences for private transactions.\n* Improved operational visibility with monitoring tools.\n"
+    },
+    {
+      "project": "individuals",
+      "title": "2.5. Individual Contributions",
+      "content": "- Theo: Launched proposals, verification reports, and update architecture; Launched the first architectural draft.\n- Zena: Launched next.js web application for syndi platform; Secured replace Flutter app with React Native + Expo project.\n- Sahil: Improved fast withdrawal reliability and speed; Secured onboarding loop, name registration, and dark theme issues.\n- Thomas: Launched web chat ui with anthropic tool_use loop; Launched agenda fetcher, storage layouts, and reader utils.\n- Monica: Improved voting ux: block ui after voting, fix translations; Launched d2 quadratic voting implementation.\n- Ale: Secured restructure to pnpm monorepo; Launched the first architectural draft.\n- Jason: Launched the first architectural draft; Improved staking experience and validator operations.\n- Suhyeon: Streamlined v1.1.0: Add secondary category support, fix frontend UX, rename to Autonomous Research Press; Improved rollup deployment experience.\n- Others: 8 contributors with smaller updates.\n"
+    }
+  ],
+  "summaries": {
+    "Ooo": {
+      "project": "Ooo",
+      "repos": [
+        "Tokamak-zk-EVM-contracts",
+        "TokamakL2JS",
+        "Tokamak-zk-EVM",
+        "private-app-channel-manager"
+      ],
+      "total_commits": 177,
+      "total_prs": 8,
+      "merged_prs": 7,
+      "top_commits": [
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(snap): initialize MetaMask Snap for Tokamak Channels",
+          "sha": "34a88d9b",
+          "timestamp": "2026-02-01 09:46:15",
+          "additions": 23779,
+          "deletions": 0,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Apply all pending branch updates",
+          "sha": "4cf63eb0",
+          "timestamp": "2026-02-15 08:00:17",
+          "additions": 131,
+          "deletions": 7876,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(snap): add E2E tests with Playwright and custom debugger agent",
+          "sha": "db253b0c",
+          "timestamp": "2026-02-02 09:22:18",
+          "additions": 7032,
+          "deletions": 61,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Update circuit visualizer",
+          "sha": "9afe6a75",
+          "timestamp": "2026-02-09 17:16:47",
+          "additions": 6090,
+          "deletions": 456,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "updateUserStorageSlot function",
+          "sha": "853264b6",
+          "timestamp": "2026-02-02 09:02:43",
+          "additions": 2106,
+          "deletions": 1399,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(extension): scaffold Chrome Extension with MetaMask-style design",
+          "sha": "08e1f580",
+          "timestamp": "2026-02-01 07:53:38",
+          "additions": 2611,
+          "deletions": 0,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "fixed",
+          "sha": "d8c20b88",
+          "timestamp": "2026-02-03 08:19:31",
+          "additions": 1572,
+          "deletions": 873,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "deleted upgrade jsons",
+          "sha": "51111333",
+          "timestamp": "2026-02-03 08:38:38",
+          "additions": 0,
+          "deletions": 2262,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "Commit all current workspace changes",
+          "sha": "ae99e6b0",
+          "timestamp": "2026-02-15 08:28:50",
+          "additions": 600,
+          "deletions": 1587,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "docs: add sisyphus plans for multi-token, snap menu, and extension",
+          "sha": "3312256b",
+          "timestamp": "2026-02-02 04:52:37",
+          "additions": 2019,
+          "deletions": 0,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Refine prove4 timing instrumentation and timing tooling",
+          "sha": "ccc3d2d8",
+          "timestamp": "2026-02-06 11:25:24",
+          "additions": 1732,
+          "deletions": 235,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "feat: add synthesizer test automation",
+          "sha": "339f933f",
+          "timestamp": "2026-02-03 13:05:49",
+          "additions": 1622,
+          "deletions": 56,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Refactor shared setup/NTT flow and remove unused backend code",
+          "sha": "cf529573",
+          "timestamp": "2026-02-09 05:12:46",
+          "additions": 952,
+          "deletions": 655,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(e2e): add full channel lifecycle E2E tests with CDP + MetaMask",
+          "sha": "984040b3",
+          "timestamp": "2026-02-13 04:33:02",
+          "additions": 1350,
+          "deletions": 0,
+          "member_id": "ale"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(snap): implement interactive menu with L1/L2 transaction support",
+          "sha": "883b4c2b",
+          "timestamp": "2026-02-02 04:38:07",
+          "additions": 1124,
+          "deletions": 100,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Tested",
+          "sha": "257481b5",
+          "timestamp": "2026-02-12 20:01:31",
+          "additions": 608,
+          "deletions": 488,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "offset fixed",
+          "sha": "08388104",
+          "timestamp": "2026-02-03 08:38:20",
+          "additions": 1061,
+          "deletions": 29,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Make zero-copy the only sigma path",
+          "sha": "85d9149c",
+          "timestamp": "2026-02-05 13:35:25",
+          "additions": 855,
+          "deletions": 194,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Update backend timing and related changes",
+          "sha": "7964656a",
+          "timestamp": "2026-02-07 18:16:54",
+          "additions": 469,
+          "deletions": 437,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "test: add USDT proof generation tests and gitignore chrome profile",
+          "sha": "205eaaf4",
+          "timestamp": "2026-02-06 04:38:41",
+          "additions": 787,
+          "deletions": 0,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "ci: integrate synthesizer tests and add preprocess input support",
+          "sha": "5436eade",
+          "timestamp": "2026-02-04 10:38:11",
+          "additions": 579,
+          "deletions": 187,
+          "member_id": "jake"
+        },
+        {
+          "repo": "TokamakL2JS",
+          "message": "Implement multi-tree state snapshot updates and align configs",
+          "sha": "ccd1e478",
+          "timestamp": "2026-02-12 03:35:48",
+          "additions": 439,
+          "deletions": 241,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM-contracts",
+          "message": "setAllowedTargetContract updated",
+          "sha": "610eca67",
+          "timestamp": "2026-02-02 09:22:56",
+          "additions": 555,
+          "deletions": 65,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Update ERC20 example configs and simulation flow",
+          "sha": "50982fd1",
+          "timestamp": "2026-02-12 16:19:16",
+          "additions": 378,
+          "deletions": 233,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "fix(balance): add missing slotIndex param and use dynamic balance slot from contract",
+          "sha": "0660e0b2",
+          "timestamp": "2026-02-06 04:33:05",
+          "additions": 514,
+          "deletions": 91,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "feat: improve div_by_vanishing_opt caching",
+          "sha": "8839dbc5",
+          "timestamp": "2026-02-07 08:03:08",
+          "additions": 335,
+          "deletions": 224,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Deduplicate Sigma encode logic across archived/non-archived types",
+          "sha": "12f5a8ee",
+          "timestamp": "2026-02-14 22:05:46",
+          "additions": 214,
+          "deletions": 338,
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "feat: cache denom inverses and benchmark div_by_vanishing",
+          "sha": "d583440c",
+          "timestamp": "2026-02-05 08:19:37",
+          "additions": 395,
+          "deletions": 156,
+          "member_id": "jake"
+        },
+        {
+          "repo": "private-app-channel-manager",
+          "message": "feat(extension): add token deposit with MPT key generation",
+          "sha": "e2f28218",
+          "timestamp": "2026-02-01 08:03:34",
+          "additions": 498,
+          "deletions": 11,
+          "member_id": "ale"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "message": "Optimize read_R1CS_gen_uvwXY paths",
+          "sha": "2675f6f2",
+          "timestamp": "2026-02-06 06:24:46",
+          "additions": 309,
+          "deletions": 181,
+          "member_id": "jake"
+        }
+      ],
+      "merged_pr_list": [
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "Refactor public commitment split across setup/prove/preprocess/verify",
+          "pr_number": "183",
+          "state": "MERGED",
+          "timestamp": "2026-02-15 08:59:45",
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "Update ERC20 config flow and multi-tree state handling",
+          "pr_number": "182",
+          "state": "MERGED",
+          "timestamp": "2026-02-12 20:08:27",
+          "member_id": "jake"
+        },
+        {
+          "repo": "TokamakL2JS",
+          "title": "Implement multi-tree state snapshot updates and align configs",
+          "pr_number": "4",
+          "state": "MERGED",
+          "timestamp": "2026-02-12 03:37:41",
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "Optimization: backend/prove",
+          "pr_number": "181",
+          "state": "MERGED",
+          "timestamp": "2026-02-07 18:28:51",
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "Reorganizing branches",
+          "pr_number": "179",
+          "state": "MERGED",
+          "timestamp": "2026-02-05 08:31:52",
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "ci: integrate synthesizer tests and add preprocess input support",
+          "pr_number": "178",
+          "state": "MERGED",
+          "timestamp": "2026-02-04 10:43:08",
+          "member_id": "jake"
+        },
+        {
+          "repo": "Tokamak-zk-EVM",
+          "title": "CI: add synthesizer test automation",
+          "pr_number": "177",
+          "state": "MERGED",
+          "timestamp": "2026-02-03 13:06:31",
+          "member_id": "jake"
+        }
+      ],
+      "lines_added": 70931,
+      "lines_deleted": 23296,
+      "total_changes": 94227,
+      "net_change": 47635,
+      "contributors": [
+        "jake",
+        "mehdi",
+        "ale"
+      ],
+      "contributor_count": 3,
+      "github_url": "https://github.com/tokamak-network/Ooo",
+      "start_date": "2026-02-01",
+      "end_date": "2026-02-15"
+    },
+    "Eco": {
+      "project": "Eco",
+      "repos": [
+        "ton-staking-v2",
+        "tokamak-landing-page",
+        "RAT-frontend",
+        "staking-community-version",
+        "tokamak-dao-v2"
+      ],
+      "total_commits": 303,
+      "total_prs": 0,
+      "merged_prs": 0,
+      "top_commits": [
+        {
+          "repo": "ton-staking-v2",
+          "message": "merge: integrate ton-staking-v3/dev into rat-fast-withdrawal",
+          "sha": "5a9d1633",
+          "timestamp": "2026-02-07 13:01:34",
+          "additions": 32284,
+          "deletions": 867,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "chore: add scripts/config/ to .gitignore and untrack devnet data",
+          "sha": "dd4ddc73",
+          "timestamp": "2026-02-10 05:05:23",
+          "additions": 2,
+          "deletions": 32191,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "chore: update devnet configuration files",
+          "sha": "674e5400",
+          "timestamp": "2026-02-03 12:34:08",
+          "additions": 31447,
+          "deletions": 9,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "Front Demo Update",
+          "sha": "2ba24613",
+          "timestamp": "2026-02-10 07:19:26",
+          "additions": 12533,
+          "deletions": 64,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat: add web-based devnet monitoring UI",
+          "sha": "997800df",
+          "timestamp": "2026-02-03 08:07:17",
+          "additions": 11774,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "Update Front Test",
+          "sha": "ba263d60",
+          "timestamp": "2026-02-03 15:34:34",
+          "additions": 10732,
+          "deletions": 32,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: remove outdated Fast Withdrawal documentation",
+          "sha": "478dd176",
+          "timestamp": "2026-02-03 08:33:05",
+          "additions": 0,
+          "deletions": 8882,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: add Fast Withdrawal design documentation",
+          "sha": "f1bdec53",
+          "timestamp": "2026-02-02 14:48:48",
+          "additions": 8084,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "chore(scripts): remove obsolete devnet scripts",
+          "sha": "bfbc51f0",
+          "timestamp": "2026-02-07 12:42:10",
+          "additions": 0,
+          "deletions": 7877,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: update V3 system documentation with RAT client details",
+          "sha": "54f08a6f",
+          "timestamp": "2026-02-02 04:20:11",
+          "additions": 6381,
+          "deletions": 552,
+          "member_id": "zena"
+        },
+        {
+          "repo": "RAT-frontend",
+          "message": "test: Add Vitest unit testing infrastructure with 221 tests",
+          "sha": "aaf88369",
+          "timestamp": "2026-02-06 08:25:53",
+          "additions": 5863,
+          "deletions": 673,
+          "member_id": "jason"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: add web-ui verification checklists",
+          "sha": "ad35593c",
+          "timestamp": "2026-02-03 12:37:30",
+          "additions": 5110,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "Real op-challenger integration test",
+          "sha": "5aa00c18",
+          "timestamp": "2026-02-09 06:48:50",
+          "additions": 4613,
+          "deletions": 113,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "test(op-e2e): add Fast Withdrawal e2e tests",
+          "sha": "13fda237",
+          "timestamp": "2026-02-03 05:27:07",
+          "additions": 4291,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "e2e test update",
+          "sha": "283dbdc8",
+          "timestamp": "2026-02-09 04:16:12",
+          "additions": 1407,
+          "deletions": 2516,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(web-ui): add comprehensive devnet monitoring dashboard",
+          "sha": "2ef2feb3",
+          "timestamp": "2026-02-03 12:36:44",
+          "additions": 3375,
+          "deletions": 324,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: add comprehensive local deployment operation guides",
+          "sha": "ea7a0034",
+          "timestamp": "2026-02-03 08:07:10",
+          "additions": 3685,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "RAT-frontend",
+          "message": "docs: Add project documentation and reference materials",
+          "sha": "33c2d006",
+          "timestamp": "2026-02-04 15:38:17",
+          "additions": 3481,
+          "deletions": 0,
+          "member_id": "jason"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "Challenger E2E test",
+          "sha": "0fef4622",
+          "timestamp": "2026-02-01 09:03:39",
+          "additions": 3292,
+          "deletions": 10,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "docs: add Fast Withdrawal design and planning documents",
+          "sha": "babb9f75",
+          "timestamp": "2026-02-03 13:18:19",
+          "additions": 3266,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "DisputeGame Challenger Reward Update",
+          "sha": "58225ee7",
+          "timestamp": "2026-02-01 06:26:47",
+          "additions": 2927,
+          "deletions": 59,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(fast-withdrawal): implement validator node with BLS signing and libp2p",
+          "sha": "9cbab0e4",
+          "timestamp": "2026-02-03 13:18:22",
+          "additions": 2840,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "tokamak-dao-v2",
+          "message": "feat: add network auto-switch, delegate UX, and sandbox stop loading",
+          "sha": "c58176df",
+          "timestamp": "2026-02-09 11:51:24",
+          "additions": 2096,
+          "deletions": 699,
+          "member_id": "thomas"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(aggregator): add core service packages",
+          "sha": "8512d26e",
+          "timestamp": "2026-02-03 15:28:25",
+          "additions": 2733,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "Create FrontEnd For Demo",
+          "sha": "9826f043",
+          "timestamp": "2026-02-03 11:41:32",
+          "additions": 2505,
+          "deletions": 0,
+          "member_id": "harvey"
+        },
+        {
+          "repo": "RAT-frontend",
+          "message": "feat: Replace mock data with real contract integration",
+          "sha": "1f63a6cf",
+          "timestamp": "2026-02-04 08:56:38",
+          "additions": 1967,
+          "deletions": 456,
+          "member_id": "jason"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(scripts): add sepolia fork devnet startup scripts",
+          "sha": "ae65f2e0",
+          "timestamp": "2026-02-04 10:09:43",
+          "additions": 2341,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "refactor: reorganize RAT tests into rat-client directory",
+          "sha": "7163f75f",
+          "timestamp": "2026-02-02 04:19:35",
+          "additions": 1134,
+          "deletions": 1192,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(web-ui): add Playwright e2e tests for staking dashboard",
+          "sha": "da287915",
+          "timestamp": "2026-02-07 09:42:45",
+          "additions": 2192,
+          "deletions": 0,
+          "member_id": "zena"
+        },
+        {
+          "repo": "ton-staking-v2",
+          "message": "feat(fast-withdrawal): add fixed TON fee and Portal onlyRAT access control",
+          "sha": "2bb6faaa",
+          "timestamp": "2026-02-11 11:48:20",
+          "additions": 1382,
+          "deletions": 654,
+          "member_id": "zena"
+        }
+      ],
+      "merged_pr_list": [],
+      "lines_added": 248425,
+      "lines_deleted": 71682,
+      "total_changes": 320107,
+      "net_change": 176743,
+      "contributors": [
+        "harvey",
+        "jason",
+        "zena",
+        "ale",
+        "thomas"
+      ],
+      "contributor_count": 5,
+      "github_url": "https://github.com/tokamak-network/Eco",
+      "start_date": "2026-02-01",
+      "end_date": "2026-02-15"
+    },
+    "TRH": {
+      "project": "TRH",
+      "repos": [
+        "DRB-node",
+        "trh-platform-ui",
+        "trh-sdk",
+        "tokamak-thanos",
+        "trh-backend"
+      ],
+      "total_commits": 80,
+      "total_prs": 6,
+      "merged_prs": 3,
+      "top_commits": [
+        {
+          "repo": "trh-platform-ui",
+          "message": "add WalletConnect support for Electron and browsers without MetaMask",
+          "sha": "f68a1767",
+          "timestamp": "2026-02-11 06:55:52",
+          "additions": 5652,
+          "deletions": 1958,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "add walletconnect dependencies for electron wallet support",
+          "sha": "78d9601f",
+          "timestamp": "2026-02-05 20:46:49",
+          "additions": 5437,
+          "deletions": 1840,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-sdk",
+          "message": "resolved merge conflicts with main and fixed typed error handling as per PR #173 review",
+          "sha": "72d35f51",
+          "timestamp": "2026-02-09 08:32:07",
+          "additions": 4128,
+          "deletions": 836,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "added interact and monitoring tabs for DRB system stacks",
+          "sha": "96095fba",
+          "timestamp": "2026-02-02 14:32:29",
+          "additions": 1358,
+          "deletions": 2,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "merge: resolve conflicts with origin/main",
+          "sha": "6cd86c7d",
+          "timestamp": "2026-02-06 05:49:17",
+          "additions": 879,
+          "deletions": 94,
+          "member_id": "theo"
+        },
+        {
+          "repo": "tokamak-thanos",
+          "message": "fix(shutdown): add security improvements to GenFWStorage and security audit report by Claude skills",
+          "sha": "96bb69fd",
+          "timestamp": "2026-02-02 08:38:30",
+          "additions": 833,
+          "deletions": 4,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "feat: Add `AGENTS.md` to provide AI coding agent guidance and `architecture.md` for project architecture documentation.",
+          "sha": "9c6517ce",
+          "timestamp": "2026-02-04 08:33:03",
+          "additions": 661,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "docs: add Mainnet Support UI Test Guide",
+          "sha": "61427165",
+          "timestamp": "2026-02-05 11:14:08",
+          "additions": 486,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "refactor: cache client at node initialization instead of per-call",
+          "sha": "b59ca1af",
+          "timestamp": "2026-02-01 11:19:18",
+          "additions": 219,
+          "deletions": 266,
+          "member_id": "jeongun"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "Feat: Support mainnet (#44)",
+          "sha": "1a25e7a0",
+          "timestamp": "2026-02-06 08:56:04",
+          "additions": 411,
+          "deletions": 19,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "docs: add backup functionality UI test guide",
+          "sha": "5f6e8afd",
+          "timestamp": "2026-02-05 03:55:14",
+          "additions": 401,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "feat(rollup): add mainnet safety guards and pre-deployment checklist",
+          "sha": "698fb204",
+          "timestamp": "2026-02-02 14:11:46",
+          "additions": 346,
+          "deletions": 51,
+          "member_id": "theo"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "refactor: remove ChainID RPC call in favor of env config",
+          "sha": "81e789be",
+          "timestamp": "2026-02-05 10:01:24",
+          "additions": 118,
+          "deletions": 242,
+          "member_id": "jeongun"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "fix: address critical bugs in websocket reconnection and error handling",
+          "sha": "4bcbe459",
+          "timestamp": "2026-02-02 14:13:25",
+          "additions": 213,
+          "deletions": 54,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "tokamak-thanos",
+          "message": "feat: Add anti-reentry and fuzz tests to the ForceWithdrawBridge and centralize the Forge default sender constant",
+          "sha": "b222167f",
+          "timestamp": "2026-02-02 08:16:24",
+          "additions": 253,
+          "deletions": 6,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "feat(backend): implement pre-deployment validation API for mainnet safety",
+          "sha": "c3df626d",
+          "timestamp": "2026-02-04 05:47:33",
+          "additions": 241,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-sdk",
+          "message": "fix(shutdown): add specific error messages for Python scripts and update README.md",
+          "sha": "681f43e9",
+          "timestamp": "2026-02-02 09:51:40",
+          "additions": 147,
+          "deletions": 89,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "test: add comprehensive monitoring integration tests",
+          "sha": "44397e20",
+          "timestamp": "2026-02-11 04:26:54",
+          "additions": 234,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "feat: update Danger Zone to remove duplicated feautres",
+          "sha": "1bb514bf",
+          "timestamp": "2026-02-04 23:51:42",
+          "additions": 45,
+          "deletions": 185,
+          "member_id": "theo"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "fixed failing tests",
+          "sha": "71ec61fa",
+          "timestamp": "2026-02-13 09:22:00",
+          "additions": 155,
+          "deletions": 68,
+          "member_id": "mehdi"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "refactor: use cached contract ABI instead of loading from file",
+          "sha": "e43b5599",
+          "timestamp": "2026-02-01 11:19:20",
+          "additions": 167,
+          "deletions": 45,
+          "member_id": "jeongun"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "add walletconnect support to useWallet hook",
+          "sha": "51818302",
+          "timestamp": "2026-02-05 20:47:48",
+          "additions": 149,
+          "deletions": 62,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "feat(rollup-detail): implement operational safety features",
+          "sha": "ee230f1c",
+          "timestamp": "2026-02-02 14:12:01",
+          "additions": 208,
+          "deletions": 0,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-sdk",
+          "message": "chore: clean docs",
+          "sha": "3dac43c1",
+          "timestamp": "2026-02-04 05:00:35",
+          "additions": 184,
+          "deletions": 2,
+          "member_id": "theo"
+        },
+        {
+          "repo": "DRB-node",
+          "message": "chore: remove ABI file",
+          "sha": "7eb34045",
+          "timestamp": "2026-02-01 11:19:20",
+          "additions": 0,
+          "deletions": 154,
+          "member_id": "jeongun"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "added GetUninstallableIntegration and auto cleanup on install failure as per PR #39 review",
+          "sha": "742d566c",
+          "timestamp": "2026-02-09 04:37:32",
+          "additions": 134,
+          "deletions": 16,
+          "member_id": "sahil"
+        },
+        {
+          "repo": "trh-backend",
+          "message": "feat: improves Thanos deployment validation logic, dynamically calculates deployment gas costs, centralizes chain-related constants and updates AGENTS.md",
+          "sha": "1583c1a6",
+          "timestamp": "2026-02-04 11:17:54",
+          "additions": 87,
+          "deletions": 37,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "chore: change conditon for eslint",
+          "sha": "19fab9ef",
+          "timestamp": "2026-02-05 11:11:09",
+          "additions": 95,
+          "deletions": 28,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "chore: fix lint",
+          "sha": "ac3473d6",
+          "timestamp": "2026-02-02 14:39:17",
+          "additions": 39,
+          "deletions": 73,
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-platform-ui",
+          "message": "feat: simplify email alert SMTP configuration to Gmail only",
+          "sha": "70ea21aa",
+          "timestamp": "2026-02-11 04:28:00",
+          "additions": 28,
+          "deletions": 82,
+          "member_id": "theo"
+        }
+      ],
+      "merged_pr_list": [
+        {
+          "repo": "trh-platform-ui",
+          "title": "Feat: Support mainnet",
+          "pr_number": "24",
+          "state": "MERGED",
+          "timestamp": "2026-02-04 08:38:17",
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-backend",
+          "title": "Feat: Support mainnet",
+          "pr_number": "44",
+          "state": "MERGED",
+          "timestamp": "2026-02-04 08:30:13",
+          "member_id": "theo"
+        },
+        {
+          "repo": "trh-sdk",
+          "title": "Feat: Support mainnet",
+          "pr_number": "189",
+          "state": "MERGED",
+          "timestamp": "2026-02-04 05:02:10",
+          "member_id": "theo"
+        }
+      ],
+      "lines_added": 24501,
+      "lines_deleted": 6817,
+      "total_changes": 31318,
+      "net_change": 17684,
+      "contributors": [
+        "theo",
+        "jeongun",
+        "mehdi",
+        "sahil"
+      ],
+      "contributor_count": 4,
+      "github_url": "https://github.com/tokamak-network/TRH",
+      "start_date": "2026-02-01",
+      "end_date": "2026-02-15"
+    }
+  },
+  "members": [
+    {
+      "id": "jake",
+      "label": "Jake",
+      "name": "Jake",
+      "email": "jake@tokamak.network"
+    },
+    {
+      "id": "theo",
+      "label": "Theo",
+      "name": "Theo",
+      "email": "theo@tokamak.network"
+    },
+    {
+      "id": "suhyeon",
+      "label": "Suhyeon",
+      "name": "Suhyeon",
+      "email": "suhyeon@tokamak.network"
+    },
+    {
+      "id": "jeongun",
+      "label": "Jeongun Baek",
+      "name": "Jeongun Baek",
+      "email": "jeongun@tokamak.network"
+    },
+    {
+      "id": "zena",
+      "label": "Zena",
+      "name": "Zena",
+      "email": "zena@tokamak.network"
+    },
+    {
+      "id": "thomas",
+      "label": "Thomas",
+      "name": "Thomas",
+      "email": "thomas@tokamak.network"
+    },
+    {
+      "id": "sahil",
+      "label": "Sahil",
+      "name": "Sahil",
+      "email": "sahil@tokamak.network"
+    },
+    {
+      "id": "mehdi",
+      "label": "Mehdi",
+      "name": "Mehdi",
+      "email": "mehdi@tokamak.network"
+    },
+    {
+      "id": "monica",
+      "label": "Monica",
+      "name": "Monica",
+      "email": "monica@tokamak.network"
+    },
+    {
+      "id": "harvey",
+      "label": "Harvey",
+      "name": "Harvey",
+      "email": "harvey@tokamak.network"
+    },
+    {
+      "id": "ale",
+      "label": "Ale",
+      "name": "Ale",
+      "email": "ale@tokamak.network"
+    },
+    {
+      "id": "aamir",
+      "label": "Aamir",
+      "name": "Aamir",
+      "email": "aamir@tokamak.network"
+    },
+    {
+      "id": "kevin",
+      "label": "Kevin",
+      "name": "Kevin",
+      "email": "kevin@tokamak.network"
+    },
+    {
+      "id": "jason",
+      "label": "Jason",
+      "name": "Jason",
+      "email": "jason@tokamak.network"
+    },
+    {
+      "id": "irene",
+      "label": "Irene",
+      "name": "Irene",
+      "email": "irene@tokamak.network"
+    },
+    {
+      "id": "jaden",
+      "label": "Jaden",
+      "name": "Jaden",
+      "email": "jaden@tokamak.network"
+    }
+  ]
+}

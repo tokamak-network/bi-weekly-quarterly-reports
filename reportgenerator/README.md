@@ -1,5 +1,13 @@
 # Biweekly Report Generator
 
+[![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Tokamak Network](https://img.shields.io/badge/Tokamak-Network-blue?logo=ethereum)](https://tokamak.network)
+
+**AI-powered biweekly report generator for GitHub organizations. Turns commit/PR data into structured reports with AI summaries.**
+
 GitHub CSV 데이터를 기반으로 Biweekly 레포트를 생성하는 웹 애플리케이션입니다.
 
 ## 기능

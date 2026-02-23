@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "Biweekly Report Generator"
+message: "AI-powered biweekly and quarterly report generator for GitHub organizations."
+type: software
+authors:
+  - name: "Tokamak Network"
+    website: "https://tokamak.network"
+repository-code: "https://github.com/tokamak-network/bi-weekly-quarterly-reports"
+keywords:
+  - biweekly-report
+  - report-generator
+  - github-analytics
+  - ai-summary
+  - developer-reporting
+  - engineering-metrics
+  - ethereum
+  - layer2
+  - blockchain
+  - tokamak-network
+  - fastapi
+  - nextjs
+  - python
+  - csv-parser
+  - progress-report
+license: MIT

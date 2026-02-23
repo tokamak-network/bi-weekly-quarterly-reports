@@ -1,0 +1,33 @@
+# Biweekly Report Generator
+
+> AI-powered biweekly and quarterly report generator for GitHub organizations. Turns CSV commit/PR data into structured reports with AI summaries.
+
+## What is this?
+
+An open-source web application that generates biweekly development reports from GitHub CSV exports. Built for Tokamak Network's engineering team to automate progress reporting for investors, partners, and internal stakeholders.
+
+## Key Features
+
+- **CSV Upload**: Drag-and-drop GitHub export CSV files
+- **Two Report Types**: Public/Investor (non-technical summaries) and Technical (developer-facing with GitHub links)
+- **AI Summaries**: Uses OpenAI-compatible APIs (GPT, Gemini, DeepSeek) to generate natural language summaries
+- **Multi-Model Support**: Run reports through multiple AI models simultaneously for comparison
+- **Repository & Project Grouping**: Organize reports by repo or by project
+- **Repo Limiting**: Focus on top N most active repos, group the rest as "Other"
+- **Export Formats**: Markdown, CSV, TSV download
+
+## Tech Stack
+
+- Backend: Python 3.9+, FastAPI
+- Frontend: Next.js, React, Tailwind CSS
+- AI: OpenAI-compatible API (configurable model)
+
+## Who built this?
+
+Tokamak Network — an Ethereum Layer 2 protocol team. 15 engineers, 70+ active repositories, 2000+ commits every two weeks.
+
+## Links
+
+- Website: https://tokamak.network
+- GitHub Org: https://github.com/tokamak-network
+- Repository: https://github.com/tokamak-network/bi-weekly-quarterly-reports

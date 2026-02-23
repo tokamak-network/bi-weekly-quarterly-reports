@@ -2082,12 +2082,12 @@ Generate a detailed, impactful report section for this repository. This report i
 
 Structure your output EXACTLY as follows:
 
-## [Repository Name]
+# [Repository Name]
 
-### Overview
+## Overview
 Write 2-3 sentences explaining what this repository/project is, its purpose in the Tokamak ecosystem, and why it matters to users and investors.
 
-### Statistics
+## Statistics
 | Metric | Value |
 |--------|-------|
 | Commits | [number] |
@@ -2096,10 +2096,10 @@ Write 2-3 sentences explaining what this repository/project is, its purpose in t
 | Lines Deleted | -[number] |
 | Net Change | [+/-number] |
 
-### Period Goals
+## Period Goals
 Describe in 2-3 sentences what the team aimed to accomplish during this reporting period. What were the key objectives?
 
-### Key Accomplishments
+## Key Accomplishments
 List ALL significant work done. Each bullet should:
 - Start with a strong action verb
 - Explain the technical change AND its user/business impact
@@ -2110,13 +2110,13 @@ Use this format:
 
 Scale the number of bullets to the actual work done. Major repos (50+ commits): 8-12 bullets. Medium repos (10-50 commits): 4-8 bullets. Small repos (1-10 commits): 2-4 bullets. Do NOT inflate minimal work into many bullets.
 
-### Code Analysis
+## Code Analysis
 Explain what the lines added/deleted represent:
 - What new features or capabilities were added?
 - What was optimized, refactored, or cleaned up?
 - What does this indicate about the project's maturity?
 
-### Next Steps
+## Next Steps
 Briefly mention what's planned next for this repository (1-2 sentences).
 
 ---"""
@@ -2257,7 +2257,7 @@ Generate the comprehensive section for {project}:"""
         lines = response.split('\n')
         for i, line in enumerate(lines):
             if line.startswith('## ') or line.startswith('# '):
-                lines.insert(i + 1, f"\n**GitHub**: {github_url}\n")
+                lines.insert(i + 1, f"\n**GitHub**: [Link]({github_url})\n")
                 break
         response = '\n'.join(lines)
         return response + "\n\n"
@@ -2278,11 +2278,11 @@ def generate_basic_comprehensive(project: str, summary: dict, info: dict) -> str
         msg = sanitize_initial_commit(c['message'], c.get('repo'), False)
         commits_text += f"* {msg}\n"
 
-    return f"""## {project}
+    return f"""# {project}
 
-**GitHub**: {github_url}
+**GitHub**: [Link]({github_url})
 
-### Statistics
+## Statistics
 | Metric | Value |
 |--------|-------|
 | Commits | {total_commits} |
@@ -2291,7 +2291,7 @@ def generate_basic_comprehensive(project: str, summary: dict, info: dict) -> str
 | Lines Deleted | -{lines_deleted:,} |
 | Net Change | {'+' if net_change >= 0 else ''}{net_change:,} |
 
-### Key Work
+## Key Work
 {commits_text if commits_text else '* Development activity recorded'}
 
 ---
