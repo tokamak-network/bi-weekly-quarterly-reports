@@ -2843,9 +2843,14 @@ async def generate_report(
 
         if report_grouping == "repository":
             entries = list(summaries.items())
+            # Sort alphabetically (Kevin's preference), keep "Other repos" at the end
+            other_repos = None
             if "Other repos" in summaries:
                 entries = [(name, summary) for name, summary in entries if name != "Other repos"]
-                entries.append(("Other repos", summaries["Other repos"]))
+                other_repos = ("Other repos", summaries["Other repos"])
+            entries.sort(key=lambda item: item[0].lower())
+            if other_repos:
+                entries.append(other_repos)
 
             # Parallel generation for repository sections
             def _gen_repo_section(repo_name_and_summary):
@@ -2941,9 +2946,13 @@ async def generate_report(
                 candidate_sections = []
                 if report_grouping == "repository":
                     entries = list(summaries.items())
+                    other_repos = None
                     if "Other repos" in summaries:
                         entries = [(name, summary) for name, summary in entries if name != "Other repos"]
-                        entries.append(("Other repos", summaries["Other repos"]))
+                        other_repos = ("Other repos", summaries["Other repos"])
+                    entries.sort(key=lambda item: item[0].lower())
+                    if other_repos:
+                        entries.append(other_repos)
                     for repo_name, summary in entries:
                         summary = trim_summary_for_ai(summary, 12, 6)
                         if report_type == "technical":
