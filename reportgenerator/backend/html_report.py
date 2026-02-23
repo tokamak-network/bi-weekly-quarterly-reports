@@ -101,6 +101,9 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
                 if in_summary:
                     continue
                 continue
+            # Skip GitHub link lines (e.g. **GitHub**: [Link](url))
+            if '**GitHub**' in stripped or 'GitHub]: ' in stripped or '[Link](' in stripped:
+                continue
             if stripped.startswith('# ') and not stripped.startswith('## '):
                 headline_parts.append(stripped.lstrip('# ').strip())
             elif stripped.startswith('**') and stripped.endswith('**'):
