@@ -2125,8 +2125,9 @@ export default function Home() {
                           printWindow.document.write(htmlReport)
                           printWindow.document.close()
                           setTimeout(() => {
+                            printWindow.focus()
                             printWindow.print()
-                          }, 500)
+                          }, 800)
                         }
                       }}
                       className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 transition"

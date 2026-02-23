@@ -444,7 +444,13 @@ def generate_html_report(
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#1a1a1a; background:#f8f9fa; }}
-  @media print {{ body {{ background:#fff; }} }}
+  @page {{
+    size: A4;
+    margin: 0;
+  }}
+  @media print {{
+    body {{ background:#fff; margin: 15mm; }}
+  }}
 </style>
 </head>
 <body>
