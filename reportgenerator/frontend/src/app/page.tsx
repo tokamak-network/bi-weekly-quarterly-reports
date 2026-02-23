@@ -2118,6 +2118,21 @@ export default function Home() {
                     >
                       Preview HTML
                     </button>
+                    <button
+                      onClick={() => {
+                        const printWindow = window.open('', '_blank')
+                        if (printWindow) {
+                          printWindow.document.write(htmlReport)
+                          printWindow.document.close()
+                          setTimeout(() => {
+                            printWindow.print()
+                          }, 500)
+                        }
+                      }}
+                      className="rounded-lg bg-red-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-600 transition"
+                    >
+                      Download PDF
+                    </button>
                   </>
                 )}
               </div>
