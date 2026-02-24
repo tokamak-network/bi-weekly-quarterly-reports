@@ -164,9 +164,9 @@ DEFAULT_BLUEPRINT = None
 
 
 def _load_logo_base64() -> str:
-    path = os.path.join(LOGO_DIR, "3_transparent_cropped.png")
+    path = os.path.join(LOGO_DIR, "5_symbol_clrd_cropped.png")
     if not os.path.exists(path):
-        path = os.path.join(LOGO_DIR, "3_transparent.png")
+        path = os.path.join(LOGO_DIR, "5_symbol_clrd_transparent.png")
     if not os.path.exists(path):
         return ""
     with open(path, "rb") as f:
