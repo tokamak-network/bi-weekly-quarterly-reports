@@ -337,6 +337,7 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState('gpt-5.2-pro')
   const [showModelMenu, setShowModelMenu] = useState(false)
   const [reportLanguage, setReportLanguage] = useState<'en' | 'kr' | 'both'>('en')
+  const [reportNumber, setReportNumber] = useState('2')
   const [langTab, setLangTab] = useState<'en' | 'kr'>('en')
 
   /* ---- Step 2: Review & Improve ---- */
@@ -574,6 +575,7 @@ export default function Home() {
       formData.append('repo_limit', repoLimit)
       formData.append('model', selectedModel)
       formData.append('language', reportLanguage)
+      formData.append('report_number', reportNumber)
 
       const response = await fetch('http://localhost:8000/api/generate', {
         method: 'POST',
@@ -1335,6 +1337,21 @@ export default function Home() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Report Number */}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">Report #</div>
+                      <p className="mt-1 text-xs text-gray-500">Biweekly report number.</p>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      value={reportNumber}
+                      onChange={(e) => setReportNumber(e.target.value)}
+                      className="w-20 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-800 focus:border-blue-500 focus:outline-none"
+                    />
                   </div>
 
                   {/* Report type */}

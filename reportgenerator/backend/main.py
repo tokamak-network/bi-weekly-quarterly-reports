@@ -2796,6 +2796,7 @@ async def generate_report(
     report_format: str = Form("concise"),
     output_format: str = Form("markdown"),
     language: str = Form("en"),
+    report_number: int = Form(2),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -3180,6 +3181,7 @@ async def generate_report(
                 date_range={"start": start_date, "end": end_date},
                 stats=report_stats,
                 language=language,
+                report_number=report_number,
             )
 
         # Build response

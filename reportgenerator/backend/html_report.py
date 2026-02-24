@@ -282,6 +282,7 @@ def generate_html_report(
     stats: dict,
     markdown_report_kr: Optional[str] = None,
     language: str = "en",
+    report_number: int = 2,
 ) -> str:
     """Generate a self-contained HTML report.
     
@@ -670,7 +671,7 @@ function switchLang(lang) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tokamak Network Biweekly Report #2 — {_escape(date_short)}</title>
+<title>Tokamak Network Biweekly Report #{report_number} — {_escape(date_short)}</title>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#1a1a1a; background:#f8f9fa; }}
@@ -745,7 +746,7 @@ function switchLang(lang) {
   <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px),repeating-linear-gradient(-45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px);"></div>
   <div style="position:relative;z-index:1;text-align:center;">
     <img src="{stacked_logo}" alt="Tokamak Network" style="height:480px;margin-bottom:0;">
-    <h1 style="font-size:3.5rem;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:16px;">BIWEEKLY<br>REPORT #2</h1>
+    <h1 style="font-size:3.5rem;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:16px;">BIWEEKLY<br>REPORT #{report_number}</h1>
     <div style="width:60px;height:3px;background:#2A72E5;margin:24px auto;"></div>
     <p style="font-size:1.2rem;color:rgba(255,255,255,0.6);font-weight:300;letter-spacing:4px;text-transform:uppercase;">Bi-Weekly Engineering Update</p>
     <p style="font-size:1.5rem;color:rgba(255,255,255,0.85);font-weight:500;margin-top:32px;">{_escape(date_display)}</p>
