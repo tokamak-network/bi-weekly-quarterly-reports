@@ -3186,6 +3186,35 @@ async def generate_report(
                 report_title=report_title,
             )
 
+        # S3 upload + Gmail-safe summary email
+        email_html = ""
+        report_url = ""
+        if html_report:
+            try:
+                from s3_upload import upload_html_to_s3
+                s3_key = "reports/biweekly-{}-{}-{}.html".format(
+                    report_number, start_date, end_date
+                )
+                report_url = upload_html_to_s3(
+                    html_content=html_report,
+                    key=s3_key,
+                )
+                from html_report import generate_email_summary_html
+                email_html = generate_email_summary_html(
+                    stats=report_stats,
+                    date_range={"start": start_date, "end": end_date},
+                    report_url=report_url,
+                    report_title=report_title,
+                    report_number=report_number,
+                    markdown_report=full_report_en or full_report,
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                # Non-fatal: report generation still succeeds without email summary
+                email_html = ""
+                report_url = f"S3 upload failed: {e}"
+
         # Build response
         response_data = {
             "success": True,
@@ -3220,6 +3249,8 @@ async def generate_report(
             "headline": headline,
             "full_report": full_report,
             "html_report": html_report,
+            "email_html": email_html,
+            "report_url": report_url,
             "output_format": output_format,
             "sections": sections,
             "summaries": summaries,
