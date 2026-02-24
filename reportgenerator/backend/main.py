@@ -4411,8 +4411,9 @@ async def generate_infographic(
         content = await file.read()
         content_str = content.decode("utf-8")
 
-        # Parse CSV to get repo commit counts
+        # Parse CSV to get repo commit counts and contributors
         repo_commits: Dict[str, int] = defaultdict(int)
+        repo_contributors: Dict[str, Set[str]] = defaultdict(set)
         reader = csv.DictReader(io.StringIO(content_str))
         for row in reader:
             if row.get("source") != "github":
@@ -4424,6 +4425,13 @@ async def generate_infographic(
                 msg = (row.get("message") or "").strip('"')
                 if msg and not msg.lower().startswith("merge "):
                     repo_commits[repo] += 1
+                    member = (row.get("member_name") or "").strip()
+                    if member:
+                        repo_contributors[repo].add(member)
+        # Convert sets to sorted lists
+        repo_contribs_list: Dict[str, List[str]] = {
+            repo: sorted(contribs) for repo, contribs in repo_contributors.items()
+        }
 
         # Parse optional classification (may contain domains, synergies, blueprint)
         cat_map = None
@@ -4456,6 +4464,7 @@ async def generate_infographic(
             date_range=date_range,
             synergies=synergies_data,
             blueprint=blueprint_data,
+            repo_contributors=repo_contribs_list,
         )
 
         from fastapi.responses import HTMLResponse
