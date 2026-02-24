@@ -602,211 +602,150 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
 
 def _build_blueprint_html(categorized_repos, repo_contributors, synergies_data):
     # type: (Dict[str, List[Dict[str, Any]]], Dict[str, List[str]], Optional[List[Dict[str, Any]]]) -> str
-    """Build Blueprint tab with Section A (factual activity) and Section B (synergy analysis)."""
+    """Build Blueprint section with Category Focus & Potential Synergies."""
 
-    # ── Section A: Current Development Activity ──
-    # Group by domain, sorted by total commits desc
-    domain_groups = []
+    total_repos = sum(len(repos) for repos in categorized_repos.values())
+    total_commits = sum(r["commits"] for repos in categorized_repos.values() for r in repos)
+
+    # Build category focus cards
+    focus_cards = _build_category_focus_cards(categorized_repos)
+
+    return '''
+    <div class="blueprint-container">
+        <div class="section-heading">
+            📊 Category Focus &amp; Potential Synergies
+            <span class="section-badge badge-factual">Heuristic Analysis</span>
+        </div>
+        <div class="section-subtitle">{total_repos} active repositories · {total_commits} total commits — Current focus and cross-category synergy opportunities</div>
+        <div style="margin-top:20px;">
+            {focus_cards}
+        </div>
+    </div>
+    '''.format(
+        total_repos=total_repos,
+        total_commits="{:,}".format(total_commits),
+        focus_cards=focus_cards,
+    )
+
+
+# Synergy pair descriptions for heuristic generation
+SYNERGY_PAIR_DESCRIPTIONS = {
+    ("Privacy & ZK", "DeFi & Staking"): "ZK proof technology combined with staking protocols could enable privacy-preserving staking services where users earn rewards without exposing their positions.",
+    ("Privacy & ZK", "Core Infrastructure"): "Integrating ZK proofs into the rollup infrastructure could provide private transaction processing at the L2 level, improving both privacy and scalability.",
+    ("Privacy & ZK", "Governance"): "ZK-based governance would allow token holders to vote on proposals without revealing their voting power or identity, strengthening democratic participation.",
+    ("Privacy & ZK", "Gaming & Social"): "ZK proofs can enable verifiably fair game mechanics and private social interactions, creating trustless gaming experiences.",
+    ("DeFi & Staking", "Core Infrastructure"): "Tighter integration between staking contracts and rollup infrastructure could reduce gas costs for staking operations and enable cross-L2 staking.",
+    ("DeFi & Staking", "Governance"): "Combining staking with governance enables stake-weighted voting and delegation mechanisms, aligning economic incentives with protocol decision-making.",
+    ("DeFi & Staking", "Platform & Services"): "Embedding staking functionality into the Rollup Hub platform would let L2 operators offer native staking to their users out of the box.",
+    ("Core Infrastructure", "Platform & Services"): "Deeper integration between Thanos rollup stack and the Rollup Hub platform could streamline L2 deployment pipelines and operational tooling.",
+    ("Core Infrastructure", "AI & Machine Learning"): "AI-driven monitoring and anomaly detection for rollup nodes could improve infrastructure reliability and automate incident response.",
+    ("AI & Machine Learning", "Data & Analytics"): "Combining AI capabilities with analytics infrastructure could enable predictive insights on ecosystem health and development velocity.",
+    ("AI & Machine Learning", "Automation & Tooling"): "AI-powered automation tools could assist with code review, smart contract auditing, and developer onboarding workflows.",
+    ("Data & Analytics", "Governance"): "Data-driven governance dashboards could surface key metrics to inform proposal discussions and track the impact of governance decisions.",
+    ("Platform & Services", "Automation & Tooling"): "Automating platform deployment and monitoring workflows would reduce operational overhead for Rollup Hub users.",
+    ("Gaming & Social", "DeFi & Staking"): "Gaming platforms with integrated token staking could create play-to-earn mechanics backed by real DeFi yield.",
+    ("Research & Education", "Privacy & ZK"): "Educational content on ZK proofs and interactive tutorials could accelerate developer onboarding into the privacy stack.",
+}
+
+
+def _build_category_focus_cards(categorized_repos):
+    # type: (Dict[str, List[Dict[str, Any]]]) -> str
+    """Build category focus + synergy cards for active categories."""
+
+    active_cats = []  # type: List[tuple]
     for cat_name, cat_info in CATEGORIES.items():
         repos = categorized_repos.get(cat_name, [])
         if not repos:
             continue
         cat_commits = sum(r["commits"] for r in repos)
-        domain_groups.append((cat_name, cat_info, repos, cat_commits))
+        active_cats.append((cat_name, cat_info, repos, cat_commits))
 
-    domain_groups.sort(key=lambda x: -x[3])
+    active_cats.sort(key=lambda x: -x[3])
+    active_cat_names = [c[0] for c in active_cats]
 
-    section_a_parts = []
-    for cat_name, cat_info, repos, cat_commits in domain_groups:
-        cards = []
-        for repo in repos:
-            contribs = repo_contributors.get(repo["name"], [])
-            contribs_text = ", ".join(contribs[:5]) if contribs else "—"
-            cards.append('''
-                <div class="activity-card">
-                    <div class="activity-card-header">
-                        <span class="activity-card-name">{name}</span>
-                        <span class="activity-card-commits">{commits} commits</span>
-                    </div>
-                    <div class="activity-card-contributors">👤 {contribs}</div>
-                    <div class="activity-card-desc">{desc}</div>
-                </div>
-            '''.format(
-                name=_escape_html(repo["name"]),
-                commits=repo["commits"],
-                contribs=_escape_html(contribs_text),
-                desc=_escape_html(repo["description"]),
+    cards_html = []
+    for cat_name, cat_info, repos, cat_commits in active_cats:
+        # Current Focus: auto-generate from data
+        repo_count = len(repos)
+        top_repos = sorted(repos, key=lambda r: -r["commits"])[:3]
+        top_repo_strs = []
+        for r in top_repos:
+            top_repo_strs.append("{name} ({commits} commits)".format(
+                name=r["name"], commits=r["commits"]
             ))
+        top_list = ", ".join(top_repo_strs)
 
-        section_a_parts.append('''
-            <div class="activity-domain-group">
-                <div class="activity-domain-title">
-                    <span>{icon} {cat_name}</span>
-                    <span class="activity-domain-commits">{count} repos · {commits} total commits</span>
-                </div>
-                <div class="activity-cards">
-                    {cards}
-                </div>
-            </div>
-        '''.format(
-            icon=cat_info["icon"],
-            cat_name=cat_name,
-            count=len(repos),
-            commits=cat_commits,
-            cards="".join(cards),
-        ))
-
-    # ── Section B: Potential Synergies ──
-    # Use provided synergies or generate heuristic ones
-    active_repos = {}  # type: Dict[str, int]
-    for repos in categorized_repos.values():
-        for r in repos:
-            if r["commits"] > 0:
-                active_repos[r["name"]] = r["commits"]
-
-    if synergies_data:
-        syn_list = synergies_data
-    else:
-        syn_list = _generate_heuristic_synergies(categorized_repos, repo_contributors)
-
-    # Filter: only synergies where all involved repos are active
-    filtered_syn = []
-    for s in syn_list:
-        involved = s.get("involved_repos", [])
-        if all(r in active_repos for r in involved):
-            filtered_syn.append(s)
-
-    synergy_cards = []
-    for s in filtered_syn[:5]:
-        involved = s.get("involved_repos", [])
-        repo_chips = []
-        for rname in involved:
-            commits = active_repos.get(rname, 0)
-            repo_chips.append(
-                '<span class="synergy-repo-chip">{name}<span class="commit-count">({commits})</span></span>'.format(
-                    name=_escape_html(rname), commits=commits
-                )
+        if repo_count == 1:
+            focus_text = "{cat} has 1 active repository: {top}. Development is focused and concentrated.".format(
+                cat=cat_name, top=top_list
             )
-        basis = s.get("basis", "")
-        synergy_cards.append('''
-            <div class="synergy-card">
-                <span class="synergy-card-label">🔮 휴리스틱 분석</span>
-                <div class="synergy-card-title">{title}</div>
-                <div class="synergy-card-repos">{chips}</div>
-                <div class="synergy-card-reason">{desc}</div>
-                {basis_html}
+        else:
+            focus_text = "{cat} has {count} active repositories with {commits} total commits. Key contributors include {top}.".format(
+                cat=cat_name, count=repo_count, commits=cat_commits, top=top_list
+            )
+
+        # Potential Synergies: find matching pairs
+        synergy_texts = []
+        for other_cat in active_cat_names:
+            if other_cat == cat_name:
+                continue
+            pair = tuple(sorted([cat_name, other_cat]))
+            desc = SYNERGY_PAIR_DESCRIPTIONS.get(pair)
+            if desc:
+                synergy_texts.append(desc)
+            if len(synergy_texts) >= 2:
+                break
+
+        synergy_html = ""
+        if synergy_texts:
+            synergy_items = "".join(
+                '<li style="margin-bottom:6px;">{text}</li>'.format(text=_escape_html(t))
+                for t in synergy_texts
+            )
+            synergy_html = '''
+                <div style="margin-top:12px;">
+                    <div style="font-size:0.8rem;font-weight:600;color:#EA580C;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Potential Synergies</div>
+                    <ul style="padding-left:18px;font-size:12px;color:#555;line-height:1.5;">{items}</ul>
+                </div>
+            '''.format(items=synergy_items)
+
+        # Repo chips
+        repo_chips = "".join(
+            '<span class="synergy-repo-chip">{name}<span class="commit-count">({commits})</span></span>'.format(
+                name=_escape_html(r["name"]), commits=r["commits"]
+            )
+            for r in top_repos
+        )
+
+        cards_html.append('''
+            <div style="background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:20px 24px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);border-left:4px solid {color};">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <span style="font-size:18px;">{icon}</span>
+                    <span style="font-size:16px;font-weight:700;color:#1a1a1a;">{cat_name}</span>
+                    <span style="background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;margin-left:auto;">{count} repos · {commits} commits</span>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">{chips}</div>
+                <div style="margin-bottom:8px;">
+                    <div style="font-size:0.8rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Current Focus</div>
+                    <div style="font-size:13px;color:#444;line-height:1.5;">{focus}</div>
+                </div>
+                {synergy}
             </div>
         '''.format(
-            title=_escape_html(s.get("title", "")),
-            chips="".join(repo_chips),
-            desc=_escape_html(s.get("description", "")),
-            basis_html='<div class="synergy-card-basis">근거: {0}</div>'.format(_escape_html(basis)) if basis else "",
+            color=cat_info["color"],
+            icon=cat_info["icon"],
+            cat_name=_escape_html(cat_name),
+            count=repo_count,
+            commits=cat_commits,
+            chips=repo_chips,
+            focus=_escape_html(focus_text),
+            synergy=synergy_html,
         ))
 
-    section_b_html = ""
-    if synergy_cards:
-        section_b_html = '''
-        <div class="synergy-section">
-            <div class="section-heading">
-                시너지 가능성 (Potential Synergies)
-                <span class="section-badge badge-ai">휴리스틱 분석</span>
-            </div>
-            <div class="section-subtitle">CSV 데이터 기반 분석 — 공통 기여자, 유사 활동 패턴, 상호 보완 기능을 바탕으로 도출</div>
-            <div class="synergy-cards">
-                {cards}
-            </div>
-        </div>
-        '''.format(cards="".join(synergy_cards))
-
-    total_repos = sum(len(repos) for repos in categorized_repos.values())
-    total_commits = sum(r["commits"] for repos in categorized_repos.values() for r in repos)
-
-    return '''
-    <div class="blueprint-container">
-        <div class="section-heading">
-            진행 중인 개발 현황 (Current Development Activity)
-            <span class="section-badge badge-factual">실제 데이터</span>
-        </div>
-        <div class="section-subtitle">기간 내 커밋 활동이 있는 {total_repos}개 저장소 · 총 {total_commits}개 커밋 — 커밋 수 기준 내림차순 정렬</div>
-        <div style="margin-top:20px;">
-            {section_a}
-        </div>
-        {section_b}
-    </div>
-    '''.format(
-        total_repos=total_repos,
-        total_commits="{:,}".format(total_commits),
-        section_a="".join(section_a_parts),
-        section_b=section_b_html,
-    )
+    return "".join(cards_html)
 
 
 def _generate_heuristic_synergies(categorized_repos, repo_contributors):
     # type: (Dict[str, List[Dict[str, Any]]], Dict[str, List[str]]) -> List[Dict[str, Any]]
-    """Generate synergy suggestions from CSV data heuristics."""
-
-    # Build repo -> category map and repo -> commits map
-    repo_cat = {}  # type: Dict[str, str]
-    repo_commits = {}  # type: Dict[str, int]
-    for cat_name, repos in categorized_repos.items():
-        for r in repos:
-            repo_cat[r["name"]] = cat_name
-            repo_commits[r["name"]] = r["commits"]
-
-    # Build contributor -> repos map
-    contrib_repos = defaultdict(list)  # type: defaultdict
-    for repo, contribs in repo_contributors.items():
-        for c in contribs:
-            if repo in repo_commits and repo_commits[repo] > 0:
-                contrib_repos[c].append(repo)
-
-    synergies = []
-
-    # 1. Cross-domain shared contributors (repos in different categories sharing a contributor)
-    seen_pairs = set()  # type: set
-    for contributor, repos in sorted(contrib_repos.items(), key=lambda x: -len(x[1])):
-        if len(repos) < 2:
-            continue
-        # Find cross-domain pairs
-        for i in range(len(repos)):
-            for j in range(i + 1, len(repos)):
-                r1, r2 = repos[i], repos[j]
-                cat1 = repo_cat.get(r1, "")
-                cat2 = repo_cat.get(r2, "")
-                if cat1 == cat2:
-                    continue
-                pair = tuple(sorted([r1, r2]))
-                if pair in seen_pairs:
-                    continue
-                seen_pairs.add(pair)
-                c1 = repo_commits.get(r1, 0)
-                c2 = repo_commits.get(r2, 0)
-                if c1 < 5 or c2 < 5:
-                    continue
-                synergies.append({
-                    "title": "{cat1} ↔ {cat2} 연계".format(cat1=cat1, cat2=cat2),
-                    "description": "{r1}과(와) {r2}는 공통 기여자 {contrib}를 통해 연결됩니다. {cat1} 영역의 기능과 {cat2} 영역의 기능이 결합될 수 있습니다.".format(
-                        r1=r1, r2=r2, contrib=contributor, cat1=cat1, cat2=cat2
-                    ),
-                    "involved_repos": [r1, r2],
-                    "basis": "공통 기여자: {0}".format(contributor),
-                    "score": c1 + c2,
-                })
-
-    # Sort by combined commit score and take top 5
-    synergies.sort(key=lambda x: -x.get("score", 0))
-
-    # Deduplicate by ensuring diverse domain pairs
-    final = []
-    domain_pairs_seen = set()  # type: set
-    for s in synergies:
-        repos = s["involved_repos"]
-        dp = tuple(sorted([repo_cat.get(repos[0], ""), repo_cat.get(repos[1], "")]))
-        if dp in domain_pairs_seen and len(final) >= 3:
-            continue
-        domain_pairs_seen.add(dp)
-        final.append(s)
-        if len(final) >= 5:
-            break
-
-    return final
+    """Legacy heuristic synergy generator. Kept for standalone infographic compatibility."""
+    return []

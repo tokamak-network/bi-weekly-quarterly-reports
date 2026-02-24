@@ -490,9 +490,8 @@ def generate_html_report(
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
 
-  <!-- DEVELOPMENT BLUEPRINT -->
+  <!-- CATEGORY FOCUS & SYNERGIES -->
   <div style="margin-bottom:48px;">
-    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">📍 Development Blueprint</h2>
     {blueprint_section_html}
   </div>
 
