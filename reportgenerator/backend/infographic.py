@@ -164,7 +164,7 @@ DEFAULT_BLUEPRINT = None
 
 
 def _load_logo_base64() -> str:
-    path = os.path.join(LOGO_DIR, "4_transparent.png")
+    path = os.path.join(LOGO_DIR, "3_transparent.png")
     if not os.path.exists(path):
         return ""
     with open(path, "rb") as f:
@@ -338,15 +338,15 @@ body{{
     background:#fff;
     color:#1a1a1a;
     text-align:center;
-    padding:40px 24px 24px;
+    padding:24px 24px 16px;
     position:relative;
     border-bottom:1px solid #e8e8e8;
     box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }}
 .header-logo{{
-    height:448px;
-    margin-bottom:16px;
-    filter:drop-shadow(0 2px 12px rgba(0,0,0,0.06));
+    height:200px;
+    margin-bottom:8px;
+    object-fit:contain;
 }}
 .header h1{{
     font-size:28px;
