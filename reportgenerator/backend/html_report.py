@@ -240,6 +240,8 @@ def _clean_markdown(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     # Remove *italic*
     text = re.sub(r'\*(.+?)\*', r'\1', text)
+    # Remove any remaining stray ** or *
+    text = text.replace('**', '').replace('*', '')
     # Remove [link](url) -> link
     text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
     # Remove markdown tables
