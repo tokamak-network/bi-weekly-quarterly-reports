@@ -425,11 +425,10 @@ def generate_html_report(
         </div>
         <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{_escape(overview)}</p>
         <div style="display:flex;gap:24px;justify-content:space-around;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{_fmt(repo_commits)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Commits</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{repo_contributors}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Contributors</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{_fmt(lines_added)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Added</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{_fmt(lines_deleted)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Deleted</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{'+' if repo_net >= 0 else ''}{_fmt(repo_net)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Net Change</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{repo_contributors}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Contributors</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Key Accomplishments</h4>
         <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accomplishments_html}</ul>
@@ -581,11 +580,10 @@ def generate_html_report(
         </div>
         <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{overview}</p>
         <div style="display:flex;gap:24px;justify-content:space-around;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{commits}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">커밋</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{contribs}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">기여자</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{added}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">추가 라인</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{deleted}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">삭제 라인</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{net_sign}{net}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">순 변화</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{contribs}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">기여자</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">주요 성과</h4>
         <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accs}</ul>
