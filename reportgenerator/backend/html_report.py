@@ -271,6 +271,8 @@ def generate_html_report(
     markdown_report: str,
     date_range: dict,
     stats: dict,
+    markdown_report_kr: Optional[str] = None,
+    language: str = "en",
 ) -> str:
     """Generate a self-contained HTML report.
     
@@ -435,6 +437,185 @@ def generate_html_report(
     if not headline_h3:
         headline_h3 = f"{_fmt(total_commits)} Commits Drive {_fmt_short(total_changes)} Code Changes"
 
+    # Build body content for English version
+    body_en = f'''
+  <!-- EXECUTIVE SUMMARY -->
+  <div style="margin-bottom:48px;">
+    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
+    <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{_escape(headline_h3)}</h3>
+    <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{_escape(remaining_summary)}</p>
+  </div>
+
+  <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
+
+  <!-- REPO CARDS -->
+  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">Repository Breakdown</h2>
+
+  {repo_cards_html}
+'''
+
+    # Build Korean body if available
+    body_kr = ""
+    if language == "both" and markdown_report_kr:
+        parsed_kr = _parse_comprehensive_markdown(markdown_report_kr)
+        exec_summary_kr = parsed_kr.get("executive_summary", "")
+        headline_kr = parsed_kr.get("headline", "Tokamak Network 개발 보고서")
+
+        exec_lines_kr = exec_summary_kr.split('\n') if exec_summary_kr else []
+        headline_h3_kr = ""
+        remaining_summary_kr = exec_summary_kr
+        for line in exec_lines_kr:
+            stripped = line.strip()
+            if stripped and len(stripped) < 150 and not stripped.startswith('이 '):
+                headline_h3_kr = stripped
+                remaining_summary_kr = exec_summary_kr.replace(stripped, '', 1).strip()
+                break
+        if not headline_h3_kr:
+            headline_h3_kr = "{} 커밋으로 {} 코드 변경 달성".format(_fmt(total_commits), _fmt_short(total_changes))
+
+        # Build Korean repo cards from Korean parsed content
+        repo_cards_html_kr = ""
+        for pr_kr in parsed_kr.get("repos", []):
+            kr_name = pr_kr.get("name", "")
+            kr_overview = pr_kr.get("overview", "")
+            kr_accomplishments = pr_kr.get("accomplishments", [])
+            kr_accs_html = ""
+            for acc in kr_accomplishments[:7]:
+                if ": " in acc:
+                    t, d = acc.split(": ", 1)
+                    kr_accs_html += '<li style="margin-bottom:8px;line-height:1.5;"><strong>{}</strong></li>\n'.format(_escape(t))
+                else:
+                    kr_accs_html += '<li style="margin-bottom:8px;line-height:1.5;"><strong>{}</strong></li>\n'.format(_escape(acc))
+
+            # Find matching English repo for stats
+            matched_summary = None
+            for rn, rs in summaries.items():
+                if rn.lower() == kr_name.lower() or kr_name.lower() in rn.lower():
+                    matched_summary = rs
+                    break
+
+            if matched_summary:
+                kr_commits = matched_summary.get('total_commits', 0)
+                kr_contributors = matched_summary.get('contributor_count', 0)
+                kr_added = matched_summary.get('lines_added', 0)
+                kr_deleted = matched_summary.get('lines_deleted', 0)
+                kr_net = kr_added - kr_deleted
+                kr_github = matched_summary.get('github_url', '')
+            else:
+                kr_commits = 0
+                kr_contributors = 0
+                kr_added = 0
+                kr_deleted = 0
+                kr_net = 0
+                kr_github = pr_kr.get("github_url", "")
+
+            repo_cards_html_kr += '''
+    <div style="background:#fff;border:1px solid #e8e8e8;border-radius:12px;padding:32px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 style="margin:0;font-size:1.4rem;font-weight:700;color:#1a1a1a;">{name}</h3>
+            <a href="{github}" target="_blank" style="color:#2A72E5;text-decoration:none;font-size:0.85rem;font-weight:500;">GitHub &rarr;</a>
+        </div>
+        <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{overview}</p>
+        <div style="display:flex;gap:24px;justify-content:space-around;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{commits}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">커밋</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{contribs}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">기여자</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{added}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">추가 라인</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{deleted}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">삭제 라인</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{net_sign}{net}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">순 변화</div></div>
+        </div>
+        <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">주요 성과</h4>
+        <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accs}</ul>
+    </div>'''.format(
+                name=_escape(kr_name),
+                github=_escape(kr_github),
+                overview=_escape(kr_overview),
+                commits=_fmt(kr_commits),
+                contribs=kr_contributors,
+                added=_fmt(kr_added),
+                deleted=_fmt(kr_deleted),
+                net_sign='+' if kr_net >= 0 else '',
+                net=_fmt(kr_net),
+                accs=kr_accs_html,
+            )
+
+        body_kr = '''
+  <!-- EXECUTIVE SUMMARY (KR) -->
+  <div style="margin-bottom:48px;">
+    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">요약 보고</h2>
+    <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{headline}</h3>
+    <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{summary}</p>
+  </div>
+
+  <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
+
+  <!-- REPO CARDS (KR) -->
+  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">저장소별 상세 보고</h2>
+
+  {cards}
+'''.format(
+            headline=_escape(headline_h3_kr),
+            summary=_escape(remaining_summary_kr),
+            cards=repo_cards_html_kr,
+        )
+
+    # Language toggle elements
+    toggle_html = ""
+    toggle_style = ""
+    toggle_script = ""
+    if language == "both" and body_kr:
+        toggle_style = """
+  .lang-toggle { position:fixed; top:16px; right:16px; z-index:9999; display:flex; background:#fff; border:1px solid #e0e0e0; border-radius:20px; padding:4px; box-shadow:0 2px 8px rgba(0,0,0,0.1); font-size:0.8rem; }
+  .lang-toggle button { border:none; background:transparent; padding:6px 14px; border-radius:16px; cursor:pointer; font-weight:500; color:#888; transition:all 0.2s; }
+  .lang-toggle button.active { background:#2A72E5; color:#fff; }
+  @media print { .lang-toggle { position:static; margin:8px auto; display:flex; justify-content:center; } .lang-kr { display:none !important; } .lang-en { display:block !important; } }
+"""
+        toggle_html = """
+<div class="lang-toggle" id="langToggle">
+  <button id="btnEn" class="active" onclick="switchLang('en')">🇺🇸 English</button>
+  <button id="btnKr" onclick="switchLang('kr')">🇰🇷 한국어</button>
+</div>
+"""
+        toggle_script = """
+<script>
+function switchLang(lang) {
+  var en = document.getElementById('contentEn');
+  var kr = document.getElementById('contentKr');
+  var btnEn = document.getElementById('btnEn');
+  var btnKr = document.getElementById('btnKr');
+  if (lang === 'kr') {
+    en.style.display = 'none';
+    kr.style.display = 'block';
+    btnEn.className = '';
+    btnKr.className = 'active';
+  } else {
+    en.style.display = 'block';
+    kr.style.display = 'none';
+    btnEn.className = 'active';
+    btnKr.className = '';
+  }
+}
+</script>
+"""
+
+    # Wrap body content in language divs if bilingual
+    if language == "both" and body_kr:
+        body_section = '''
+<div style="max-width:1100px;margin:0 auto;padding:48px 24px;">
+  <div class="lang-en" id="contentEn" style="display:block;">
+{en}
+  </div>
+  <div class="lang-kr" id="contentKr" style="display:none;">
+{kr}
+  </div>
+</div>
+'''.format(en=body_en, kr=body_kr)
+    else:
+        body_section = '''
+<div style="max-width:1100px;margin:0 auto;padding:48px 24px;">
+{en}
+</div>
+'''.format(en=body_en)
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -451,9 +632,12 @@ def generate_html_report(
   @media print {{
     body {{ background:#fff; margin: 15mm; }}
   }}
+  {toggle_style}
 </style>
 </head>
 <body>
+
+{toggle_html}
 
 <!-- COVER PAGE -->
 <div style="min-height:100vh;background:linear-gradient(160deg,#0d0d0d 0%,#1a1a2e 50%,#0d0d0d 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;padding:60px 40px;position:relative;overflow:hidden;">
@@ -497,24 +681,7 @@ def generate_html_report(
   </div>
 </div>
 
-<!-- BODY -->
-<div style="max-width:1100px;margin:0 auto;padding:48px 24px;">
-
-  <!-- EXECUTIVE SUMMARY -->
-  <div style="margin-bottom:48px;">
-    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
-    <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{_escape(headline_h3)}</h3>
-    <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{_escape(remaining_summary)}</p>
-  </div>
-
-  <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
-
-  <!-- REPO CARDS -->
-  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">Repository Breakdown</h2>
-
-  {repo_cards_html}
-
-</div>
+{body_section}
 
 <!-- FOOTER -->
 <div style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a2e 50%,#0d0d0d 100%);padding:60px 40px;text-align:center;">
@@ -524,6 +691,8 @@ def generate_html_report(
     <p style="color:#aaa;font-size:0.7rem;margin-top:4px;">Generated automatically from GitHub activity data</p>
   </div>
 </div>
+
+{toggle_script}
 </body>
 </html>'''
 
