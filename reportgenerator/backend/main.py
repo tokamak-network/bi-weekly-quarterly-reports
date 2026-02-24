@@ -4398,7 +4398,14 @@ async def generate_infographic(
     file: UploadFile = File(...),
     classification: Optional[str] = Form(None),
 ):
-    """Generate an ecosystem infographic HTML page from CSV data."""
+    """Generate an ecosystem infographic HTML page from CSV data.
+
+    The optional ``classification`` field accepts JSON with keys:
+      - ``domains``: dict mapping category names to lists of repo names
+      - ``synergies``: list of synergy objects (see infographic module)
+      - ``blueprint``: roadmap/blueprint object (see infographic module)
+    If omitted, built-in defaults are used for all three layers.
+    """
     from infographic import classify_repos_from_csv, generate_infographic_html, DEFAULT_DESCRIPTIONS
     try:
         content = await file.read()
@@ -4418,11 +4425,22 @@ async def generate_infographic(
                 if msg and not msg.lower().startswith("merge "):
                     repo_commits[repo] += 1
 
-        # Parse optional classification
+        # Parse optional classification (may contain domains, synergies, blueprint)
         cat_map = None
+        synergies_data = None
+        blueprint_data = None
         if classification:
             try:
-                cat_map = json.loads(classification)
+                cls_obj = json.loads(classification)
+                if isinstance(cls_obj, dict):
+                    # If it has a "domains" key, use it as category map
+                    if "domains" in cls_obj:
+                        cat_map = cls_obj["domains"]
+                    else:
+                        # Legacy: the whole object is a category map
+                        cat_map = cls_obj
+                    synergies_data = cls_obj.get("synergies")
+                    blueprint_data = cls_obj.get("blueprint")
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -4433,7 +4451,12 @@ async def generate_infographic(
 
         # Classify and generate
         categorized = classify_repos_from_csv(repo_commits, DEFAULT_DESCRIPTIONS, cat_map)
-        html = generate_infographic_html(categorized, date_range=date_range)
+        html = generate_infographic_html(
+            categorized,
+            date_range=date_range,
+            synergies=synergies_data,
+            blueprint=blueprint_data,
+        )
 
         from fastapi.responses import HTMLResponse
         return HTMLResponse(content=html)
