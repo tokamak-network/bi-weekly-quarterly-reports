@@ -12,6 +12,15 @@ import re
 from typing import Any, Dict, List, Optional
 from collections import Counter
 
+from infographic import (
+    classify_repos_from_csv,
+    CATEGORIES,
+    _activity_level,
+    _escape_html,
+    _build_landscape_html,
+    _build_blueprint_html,
+)
+
 
 LOGO_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "tokamak-logos")
 
@@ -437,6 +446,31 @@ def generate_html_report(
     if not headline_h3:
         headline_h3 = f"{_fmt(total_commits)} Commits Drive {_fmt_short(total_changes)} Code Changes"
 
+    # ── Build infographic sections (Landscape + Blueprint) ──
+    # Build repo_commits dict from summaries for classification
+    infographic_repo_commits = {}  # type: Dict[str, int]
+    infographic_repo_contributors = {}  # type: Dict[str, List[str]]
+    for rname, rsum in summaries.items():
+        if rname == "Other repos":
+            continue
+        infographic_repo_commits[rname] = rsum.get("total_commits", 0)
+        contribs = rsum.get("contributors", [])
+        if contribs:
+            infographic_repo_contributors[rname] = list(contribs)
+
+    infographic_categorized = classify_repos_from_csv(infographic_repo_commits)
+
+    inf_total_repos = sum(len(repos) for repos in infographic_categorized.values())
+    inf_total_commits = sum(r["commits"] for repos in infographic_categorized.values() for r in repos)
+    inf_active_cats = sum(1 for repos in infographic_categorized.values() if repos)
+
+    landscape_section_html = _build_landscape_html(
+        infographic_categorized, inf_total_repos, inf_total_commits, inf_active_cats
+    )
+    blueprint_section_html = _build_blueprint_html(
+        infographic_categorized, infographic_repo_contributors, None
+    )
+
     # Build body content for English version
     body_en = f'''
   <!-- EXECUTIVE SUMMARY -->
@@ -444,6 +478,22 @@ def generate_html_report(
     <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
     <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{_escape(headline_h3)}</h3>
     <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{_escape(remaining_summary)}</p>
+  </div>
+
+  <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
+
+  <!-- ECOSYSTEM LANDSCAPE -->
+  <div style="margin-bottom:48px;">
+    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">🗺️ Ecosystem Landscape</h2>
+    {landscape_section_html}
+  </div>
+
+  <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
+
+  <!-- DEVELOPMENT BLUEPRINT -->
+  <div style="margin-bottom:48px;">
+    <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">📍 Development Blueprint</h2>
+    {blueprint_section_html}
   </div>
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
@@ -621,7 +671,7 @@ function switchLang(lang) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tokamak Network Development Report — {_escape(date_short)}</title>
+<title>Tokamak Network Biweekly Report #2 — {_escape(date_short)}</title>
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; color:#1a1a1a; background:#f8f9fa; }}
@@ -633,6 +683,58 @@ function switchLang(lang) {
     body {{ background:#fff; margin: 15mm; }}
   }}
   {toggle_style}
+
+  /* Infographic styles */
+  .stats-bar{{display:flex;justify-content:center;gap:48px;padding:20px 24px;background:#fff;border-bottom:1px solid #e8e8e8;border-radius:8px;margin-bottom:16px;}}
+  .stat{{display:flex;flex-direction:column;align-items:center;}}
+  .stat-num{{font-size:26px;font-weight:700;color:#2A72E5;}}
+  .stat-label{{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}}
+  .legend,.activity-legend{{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;padding:12px 24px;background:#fff;border-bottom:1px solid #f0f0f0;border-radius:8px;margin-bottom:8px;}}
+  .legend-item{{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#555;}}
+  .legend-dot{{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}}
+  .legend-label{{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;}}
+  .landscape-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;padding:20px 0;}}
+  .category-section{{background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e8e8e8;box-shadow:0 1px 3px rgba(0,0,0,0.04);}}
+  .category-section:hover{{border-color:#d0d0d0;}}
+  .category-header{{display:flex;align-items:center;gap:10px;padding:14px 16px;font-weight:600;font-size:14px;color:#1a1a1a;background:#fff;border-left:4px solid #888;}}
+  .category-icon{{font-size:16px;}}
+  .category-title{{flex:1;}}
+  .category-count{{background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;}}
+  .category-repos{{padding:10px;display:flex;flex-direction:column;gap:6px;}}
+  .repo-card{{display:block;padding:8px 10px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}}
+  .repo-card:hover{{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}}
+  .repo-header{{display:flex;align-items:center;gap:7px;margin-bottom:3px;}}
+  .activity-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
+  .repo-name{{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}}
+  .repo-desc{{font-size:11px;color:#555;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}}
+  .repo-card:hover .repo-desc{{-webkit-line-clamp:unset;overflow:visible;}}
+  .blueprint-container{{padding:20px 0;}}
+  .section-heading{{font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:4px;display:flex;align-items:center;gap:10px;}}
+  .section-subtitle{{font-size:13px;color:#888;margin-bottom:20px;}}
+  .section-badge{{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:3px 10px;border-radius:4px;}}
+  .badge-factual{{background:#EFF6FF;color:#2A72E5;}}
+  .badge-ai{{background:#FFF7ED;color:#EA580C;}}
+  .activity-domain-group{{margin-bottom:28px;}}
+  .activity-domain-title{{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e8e8e8;display:flex;align-items:center;gap:8px;}}
+  .activity-domain-commits{{font-size:12px;font-weight:400;color:#888;}}
+  .activity-cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}}
+  .activity-card{{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);}}
+  .activity-card:hover{{border-color:#d0d0d0;}}
+  .activity-card-header{{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}}
+  .activity-card-name{{font-weight:700;font-size:14px;color:#1a1a1a;}}
+  .activity-card-commits{{background:#EFF6FF;color:#2A72E5;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;}}
+  .activity-card-contributors{{font-size:12px;color:#555;margin-bottom:4px;}}
+  .activity-card-desc{{font-size:12px;color:#888;line-height:1.4;}}
+  .synergy-section{{margin-top:40px;padding-top:32px;border-top:2px solid #e8e8e8;}}
+  .synergy-cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:16px;}}
+  .synergy-card{{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.04);border-left:4px solid #EA580C;}}
+  .synergy-card-title{{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:8px;}}
+  .synergy-card-repos{{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}}
+  .synergy-repo-chip{{background:#f0f0f0;padding:3px 10px;border-radius:6px;font-size:11px;color:#555;font-weight:600;}}
+  .synergy-repo-chip .commit-count{{color:#2A72E5;font-weight:700;margin-left:4px;}}
+  .synergy-card-reason{{font-size:13px;color:#555;line-height:1.5;}}
+  .synergy-card-label{{display:inline-block;font-size:10px;font-weight:700;color:#EA580C;background:#FFF7ED;padding:2px 8px;border-radius:4px;margin-bottom:8px;}}
+  .synergy-card-basis{{font-size:11px;color:#888;margin-top:8px;font-style:italic;}}
 </style>
 </head>
 <body>
@@ -644,7 +746,7 @@ function switchLang(lang) {
   <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px),repeating-linear-gradient(-45deg,transparent,transparent 35px,rgba(255,255,255,0.015) 35px,rgba(255,255,255,0.015) 36px);"></div>
   <div style="position:relative;z-index:1;text-align:center;">
     <img src="{stacked_logo}" alt="Tokamak Network" style="height:480px;margin-bottom:0;">
-    <h1 style="font-size:3.5rem;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:16px;">DEVELOPMENT<br>REPORT</h1>
+    <h1 style="font-size:3.5rem;font-weight:800;color:#fff;letter-spacing:-1px;line-height:1.1;margin-bottom:16px;">BIWEEKLY<br>REPORT #2</h1>
     <div style="width:60px;height:3px;background:#2A72E5;margin:24px auto;"></div>
     <p style="font-size:1.2rem;color:rgba(255,255,255,0.6);font-weight:300;letter-spacing:4px;text-transform:uppercase;">Bi-Weekly Engineering Update</p>
     <p style="font-size:1.5rem;color:rgba(255,255,255,0.85);font-weight:500;margin-top:32px;">{_escape(date_display)}</p>
@@ -687,7 +789,7 @@ function switchLang(lang) {
 <div style="background:linear-gradient(160deg,#0d0d0d 0%,#1a1a2e 50%,#0d0d0d 100%);padding:60px 40px;text-align:center;">
   <div style="max-width:600px;margin:0 auto;">
     <img src="{stacked_logo}" alt="Tokamak Network" style="height:160px;margin-bottom:0;">
-    <p style="color:#888;font-size:0.8rem;">Tokamak Network · Bi-Weekly Development Report · {_escape(date_short)}</p>
+    <p style="color:#888;font-size:0.8rem;">Tokamak Network · Biweekly Report #2 · {_escape(date_short)}</p>
     <p style="color:#aaa;font-size:0.7rem;margin-top:4px;">Generated automatically from GitHub activity data</p>
   </div>
 </div>
