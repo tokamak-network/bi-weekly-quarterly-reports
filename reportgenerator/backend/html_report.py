@@ -464,10 +464,12 @@ def generate_html_report(
     # Build repo_commits dict from summaries for classification
     infographic_repo_commits = {}  # type: Dict[str, int]
     infographic_repo_contributors = {}  # type: Dict[str, List[str]]
+    infographic_repo_changes = {}  # type: Dict[str, int]
     for rname, rsum in summaries.items():
         if rname == "Other repos":
             continue
         infographic_repo_commits[rname] = rsum.get("total_commits", 0)
+        infographic_repo_changes[rname] = rsum.get("total_changes", rsum.get("lines_added", 0) + rsum.get("lines_deleted", 0)) if isinstance(rsum, dict) else 0
         contribs = rsum.get("contributors", [])
         if contribs:
             infographic_repo_contributors[rname] = list(contribs)
@@ -475,11 +477,16 @@ def generate_html_report(
     infographic_categorized = classify_repos_from_csv(infographic_repo_commits)
 
     inf_total_repos = sum(len(repos) for repos in infographic_categorized.values())
-    inf_total_commits = sum(r["commits"] for repos in infographic_categorized.values() for r in repos)
+    inf_total_changes = sum(infographic_repo_changes.get(r["name"], 0) for repos in infographic_categorized.values() for r in repos)
     inf_active_cats = sum(1 for repos in infographic_categorized.values() if repos)
 
+    # Inject lines_changed into each repo dict for landscape display
+    for cat_repos in infographic_categorized.values():
+        for repo in cat_repos:
+            repo["lines_changed"] = infographic_repo_changes.get(repo["name"], 0)
+
     landscape_section_html = _build_landscape_html(
-        infographic_categorized, inf_total_repos, inf_total_commits, inf_active_cats
+        infographic_categorized, inf_total_repos, inf_total_changes, inf_active_cats
     )
     blueprint_section_html = _build_blueprint_html(
         infographic_categorized, infographic_repo_contributors, None
@@ -769,12 +776,7 @@ function switchLang(lang) {
 <div style="background:#111827;padding:28px 40px;">
   <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
     <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt(total_commits)}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Commits</div>
-    </div>
-    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
-    <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;">{_fmt_short(total_changes)}</div>
+      <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt_short(total_changes)}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
     </div>
     <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>

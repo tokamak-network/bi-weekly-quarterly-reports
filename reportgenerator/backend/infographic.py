@@ -512,10 +512,10 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
     stats_html = '''
     <div class="stats-bar">
         <div class="stat"><span class="stat-num">{repos}</span><span class="stat-label">Repositories</span></div>
-        <div class="stat"><span class="stat-num">{commits}</span><span class="stat-label">Commits</span></div>
+        <div class="stat"><span class="stat-num">{changes}</span><span class="stat-label">Lines Changed</span></div>
         <div class="stat"><span class="stat-num">{cats}</span><span class="stat-label">Categories</span></div>
     </div>
-    '''.format(repos=total_repos, commits="{:,}".format(total_commits), cats=active_categories)
+    '''.format(repos=total_repos, changes="{:,}".format(total_commits), cats=active_categories)
 
     legend_items = []
     for cat_name, cat_info in CATEGORIES.items():
@@ -569,13 +569,14 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
             ))
 
         repo_count = len(repos)
-        cat_commits = sum(r["commits"] for r in repos)
+        cat_lines = sum(r.get("lines_changed", 0) for r in repos)
+        cat_lines_str = "{:,}".format(cat_lines) if cat_lines > 0 else "0"
         categories_html.append('''
             <div class="category-section" data-category="{cat_name}">
                 <div class="category-header" style="border-left-color:{color};">
                     <span class="category-icon">{icon}</span>
                     <span class="category-title">{cat_name}</span>
-                    <span class="category-count">{count} repos · {commits} commits</span>
+                    <span class="category-count">{count} repos · {lines} lines changed</span>
                 </div>
                 <div class="category-repos">
                     {cards}
@@ -586,7 +587,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
             color=cat_info["color"],
             icon=cat_info["icon"],
             count=repo_count,
-            commits=cat_commits,
+            lines=cat_lines_str,
             cards="".join(repo_cards),
         ))
 
@@ -616,14 +617,14 @@ def _build_blueprint_html(categorized_repos, repo_contributors, synergies_data):
             📊 Category Focus &amp; Potential Synergies
             <span class="section-badge badge-factual">Heuristic Analysis</span>
         </div>
-        <div class="section-subtitle">{total_repos} active repositories · {total_commits} total commits — Current focus and cross-category synergy opportunities</div>
+        <div class="section-subtitle">{total_repos} active repositories · {total_changes} lines changed — Current focus and cross-category synergy opportunities</div>
         <div style="margin-top:20px;">
             {focus_cards}
         </div>
     </div>
     '''.format(
         total_repos=total_repos,
-        total_commits="{:,}".format(total_commits),
+        total_changes="{:,}".format(total_commits),
         focus_cards=focus_cards,
     )
 
@@ -667,21 +668,23 @@ def _build_category_focus_cards(categorized_repos):
     for cat_name, cat_info, repos, cat_commits in active_cats:
         # Current Focus: auto-generate from data
         repo_count = len(repos)
-        top_repos = sorted(repos, key=lambda r: -r["commits"])[:3]
+        top_repos = sorted(repos, key=lambda r: -r.get("lines_changed", 0))[:3]
         top_repo_strs = []
         for r in top_repos:
-            top_repo_strs.append("{name} ({commits} commits)".format(
-                name=r["name"], commits=r["commits"]
+            r_lines = r.get("lines_changed", 0)
+            top_repo_strs.append("{name} ({lines} lines changed)".format(
+                name=r["name"], lines="{:,}".format(r_lines)
             ))
         top_list = ", ".join(top_repo_strs)
+        cat_lines = sum(r.get("lines_changed", 0) for r in repos)
 
         if repo_count == 1:
             focus_text = "{cat} has 1 active repository: {top}. Development is focused and concentrated.".format(
                 cat=cat_name, top=top_list
             )
         else:
-            focus_text = "{cat} has {count} active repositories with {commits} total commits. Key contributors include {top}.".format(
-                cat=cat_name, count=repo_count, commits=cat_commits, top=top_list
+            focus_text = "{cat} has {count} active repositories with {lines} lines changed. Key activity includes {top}.".format(
+                cat=cat_name, count=repo_count, lines="{:,}".format(cat_lines), top=top_list
             )
 
         # Potential Synergies: find matching pairs
@@ -711,8 +714,8 @@ def _build_category_focus_cards(categorized_repos):
 
         # Repo chips
         repo_chips = "".join(
-            '<span class="synergy-repo-chip">{name}<span class="commit-count">({commits})</span></span>'.format(
-                name=_escape_html(r["name"]), commits=r["commits"]
+            '<span class="synergy-repo-chip">{name}<span class="commit-count">({lines} lines)</span></span>'.format(
+                name=_escape_html(r["name"]), lines="{:,}".format(r.get("lines_changed", 0))
             )
             for r in top_repos
         )
@@ -722,7 +725,7 @@ def _build_category_focus_cards(categorized_repos):
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                     <span style="font-size:18px;">{icon}</span>
                     <span style="font-size:16px;font-weight:700;color:#1a1a1a;">{cat_name}</span>
-                    <span style="background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;margin-left:auto;">{count} repos · {commits} commits</span>
+                    <span style="background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;margin-left:auto;">{count} repos · {lines} lines changed</span>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">{chips}</div>
                 <div style="margin-bottom:8px;">
