@@ -328,7 +328,6 @@ export default function Home() {
     contributors?: number
   } | null>(null)
   const [dateRange, setDateRange] = useState<{ start: string | null; end: string | null; days: number | null } | null>(null)
-  const [reportTitle, setReportTitle] = useState<string | null>(null)
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
   const [fullReport, setFullReport] = useState<string | null>(null)
   const [fullReportEn, setFullReportEn] = useState<string | null>(null)
