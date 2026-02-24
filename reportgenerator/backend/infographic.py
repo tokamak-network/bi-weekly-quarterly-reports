@@ -739,7 +739,7 @@ def _build_category_focus_cards(categorized_repos):
             icon=cat_info["icon"],
             cat_name=_escape_html(cat_name),
             count=repo_count,
-            commits=cat_commits,
+            lines="{:,}".format(sum(r.get("lines_changed", 0) for r in repos)),
             chips=repo_chips,
             focus=_escape_html(focus_text),
             synergy=synergy_html,
