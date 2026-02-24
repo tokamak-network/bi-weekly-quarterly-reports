@@ -331,9 +331,13 @@ export default function Home() {
   const [reportTitle, setReportTitle] = useState<string | null>(null)
   const [reportHeadline, setReportHeadline] = useState<string | null>(null)
   const [fullReport, setFullReport] = useState<string | null>(null)
+  const [fullReportEn, setFullReportEn] = useState<string | null>(null)
+  const [fullReportKr, setFullReportKr] = useState<string | null>(null)
   const [repoMeta, setRepoMeta] = useState<{ applied: boolean; total: number; shown: number } | null>(null)
   const [selectedModel, setSelectedModel] = useState('gpt-5.2-pro')
   const [showModelMenu, setShowModelMenu] = useState(false)
+  const [reportLanguage, setReportLanguage] = useState<'en' | 'kr' | 'both'>('en')
+  const [langTab, setLangTab] = useState<'en' | 'kr'>('en')
 
   /* ---- Step 2: Review & Improve ---- */
   const [reviews, setReviews] = useState<ReviewResult[]>([])
@@ -569,6 +573,7 @@ export default function Home() {
       formData.append('output_format', outputFormat)
       formData.append('repo_limit', repoLimit)
       formData.append('model', selectedModel)
+      formData.append('language', reportLanguage)
 
       const response = await fetch('http://localhost:8000/api/generate', {
         method: 'POST',
@@ -627,6 +632,8 @@ export default function Home() {
       setDateRange(data.date_range || null)
       setReportSummaries(data.summaries || {})
       setHtmlReport(data.html_report || null)
+      setFullReportEn(data.full_report_en || null)
+      setFullReportKr(data.full_report_kr || null)
       setGenerated(true)
       setActiveView('preview')
 
@@ -1305,6 +1312,31 @@ export default function Home() {
                 {/* Options */}
                 <div className="mt-6 text-xs font-semibold uppercase tracking-wide text-gray-400">Options</div>
                 <div className="mt-4 space-y-3 rounded-xl border border-gray-200 p-4">
+                  {/* Language */}
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">Language</div>
+                      <p className="mt-1 text-xs text-gray-500">Choose the report language.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {([['en', 'English'], ['kr', '한국어'], ['both', 'Both (Toggle)']] as const).map(([val, label]) => (
+                        <button
+                          key={val}
+                          onClick={() => setReportLanguage(val as 'en' | 'kr' | 'both')}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                            reportLanguage === val
+                              ? val === 'both'
+                                ? 'border-violet-600 bg-violet-50 text-violet-700'
+                                : 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Report type */}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -1513,6 +1545,26 @@ export default function Home() {
                 >
                   {loading ? 'Generating...' : 'GENERATE REPORT'}
                 </button>
+                <button
+                  onClick={async () => {
+                    if (!file) return
+                    const fd = new FormData()
+                    fd.append('file', file)
+                    try {
+                      const res = await fetch('http://localhost:8000/api/infographic', { method: 'POST', body: fd })
+                      if (!res.ok) throw new Error(await res.text())
+                      const blob = await res.blob()
+                      const url = URL.createObjectURL(blob)
+                      window.open(url, '_blank')
+                    } catch (e) {
+                      alert(`Infographic error: ${e instanceof Error ? e.message : e}`)
+                    }
+                  }}
+                  disabled={!file || loading}
+                  className="mt-3 w-full rounded-full border-2 border-blue-500 bg-white px-6 py-3 text-sm font-semibold text-blue-600 shadow-sm transition hover:bg-blue-50 hover:shadow-lg disabled:opacity-50"
+                >
+                  🗺️ Ecosystem Map
+                </button>
               </div>
             </section>
 
@@ -1547,16 +1599,44 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Bilingual tab switcher */}
+                {generated && reportLanguage === 'both' && fullReportEn && fullReportKr && (
+                  <div className="mt-4 flex items-center gap-1 rounded-lg bg-gray-100 p-1 w-fit">
+                    <button
+                      onClick={() => setLangTab('en')}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${langTab === 'en' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      🇺🇸 English
+                    </button>
+                    <button
+                      onClick={() => setLangTab('kr')}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${langTab === 'kr' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      🇰🇷 한국어
+                    </button>
+                  </div>
+                )}
+
                 <div className="mt-5 h-[460px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-5">
                   {generated ? (
                     activeView === 'preview' ? (
                       <div
                         className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(fullReport ?? rawMarkdown) }}
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(
+                          reportLanguage === 'both' && langTab === 'kr' && fullReportKr
+                            ? fullReportKr
+                            : (reportLanguage === 'both' && langTab === 'en' && fullReportEn
+                              ? fullReportEn
+                              : (fullReport ?? rawMarkdown))
+                        ) }}
                       />
                     ) : (
                       <div className="h-full whitespace-pre-wrap rounded-lg bg-white p-4 font-mono text-xs text-gray-700">
-                        {rawMarkdown}
+                        {reportLanguage === 'both' && langTab === 'kr' && fullReportKr
+                          ? fullReportKr
+                          : (reportLanguage === 'both' && langTab === 'en' && fullReportEn
+                            ? fullReportEn
+                            : rawMarkdown)}
                       </div>
                     )
                   ) : (

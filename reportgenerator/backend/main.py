@@ -2736,6 +2736,50 @@ async def analyze_csv(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def translate_report_to_korean(report_text: str, model: Optional[str] = None) -> Optional[str]:
+    """Translate/regenerate a report in professional Korean (해요체)."""
+    if not report_text or not has_tokamak_client(model):
+        return None
+
+    prompt = f"""다음 영문 개발 보고서를 한국어로 번역해 주세요.
+
+번역 지침:
+- 전문적이면서 친근한 해요체를 사용하세요 (예: "~했어요", "~이에요")
+- 기술 용어는 자연스럽게 번역하세요 (예: "commits" → "커밋", "merged PRs" → "병합된 PR", "lines added" → "추가된 라인", "repository" → "저장소")
+- 고유명사(Tokamak Network, GitHub 등)는 그대로 유지하세요
+- 마크다운 형식(#, **, |, - 등)은 그대로 유지하세요
+- 원문의 구조와 섹션 순서를 유지하세요
+- "Here is..." 같은 전문 없이 바로 번역된 내용만 출력하세요
+
+원문:
+{report_text}
+
+한국어 번역:"""
+
+    return generate_with_llm(prompt, max_tokens=8000, model=model, timeout_override=300)
+
+
+def translate_highlight_to_korean(highlight_text: str, model: Optional[str] = None) -> Optional[str]:
+    """Translate highlight text to Korean."""
+    if not highlight_text or not has_tokamak_client(model):
+        return None
+
+    prompt = f"""다음 하이라이트 텍스트를 한국어로 번역해 주세요.
+
+번역 지침:
+- 전문적이면서 친근한 해요체를 사용하세요
+- 기술 용어는 자연스럽게 번역하세요 (commits → 커밋, PRs → PR, repository → 저장소)
+- 고유명사는 그대로 유지하세요
+- 전문 없이 바로 번역된 내용만 출력하세요
+
+원문:
+{highlight_text}
+
+한국어 번역:"""
+
+    return generate_with_llm(prompt, max_tokens=2000, model=model, timeout_override=120)
+
+
 @app.post("/api/generate")
 async def generate_report(
     file: UploadFile = File(...),
@@ -2751,6 +2795,7 @@ async def generate_report(
     repo_limit: int = Form(0),
     report_format: str = Form("concise"),
     output_format: str = Form("markdown"),
+    language: str = Form("en"),
 ):
     """Generate report from uploaded CSV file."""
     try:
@@ -3074,6 +3119,47 @@ async def generate_report(
             title = build_report_title(scope, start_date, end_date, days)
             headline = build_report_headline(summaries, report_type)
 
+        # --- Language handling ---
+        # Normalize language parameter
+        if language not in ("en", "kr", "both"):
+            language = "en"
+
+        # Korean translations
+        sections_kr = None
+        highlight_kr = None
+        full_report_kr = None
+        sections_en = sections
+        highlight_en = highlight
+        full_report_en = full_report
+
+        if language in ("kr", "both") and use_ai:
+            # Translate full report to Korean
+            if full_report:
+                full_report_kr = translate_report_to_korean(full_report, model=selected_model)
+            # Translate highlight
+            if highlight:
+                highlight_kr = translate_highlight_to_korean(highlight, model=selected_model)
+            # Translate sections
+            if sections:
+                sections_kr_list = []
+                for sec in sections:
+                    kr_content = translate_report_to_korean(sec.get("content", ""), model=selected_model)
+                    sections_kr_list.append({
+                        "project": sec.get("project", ""),
+                        "title": sec.get("title", ""),
+                        "content": kr_content or sec.get("content", ""),
+                    })
+                sections_kr = sections_kr_list
+
+        # For kr-only mode, replace the main fields with Korean versions
+        if language == "kr":
+            if full_report_kr:
+                full_report = full_report_kr
+            if highlight_kr:
+                highlight = highlight_kr
+            if sections_kr:
+                sections = sections_kr
+
         # HTML output: convert comprehensive markdown to styled HTML
         html_report = ""
         if output_format == "html" and report_format == "comprehensive" and report_type == "public":
@@ -3089,17 +3175,21 @@ async def generate_report(
             }
             html_report = generate_html_report(
                 summaries=summaries,
-                markdown_report=full_report,
+                markdown_report=full_report_en or full_report,
+                markdown_report_kr=full_report_kr if language == "both" else None,
                 date_range={"start": start_date, "end": end_date},
                 stats=report_stats,
+                language=language,
             )
 
-        return JSONResponse({
+        # Build response
+        response_data = {
             "success": True,
             "report_type": report_type,
             "report_format": report_format,
             "report_scope": scope,
             "report_grouping": report_grouping,
+            "language": language,
             "model": selected_model,
             "models": requested_models,
             "model_reports": model_reports,
@@ -3130,7 +3220,18 @@ async def generate_report(
             "sections": sections,
             "summaries": summaries,
             "members": members,
-        })
+        }
+
+        # Add bilingual fields for "both" mode
+        if language == "both":
+            response_data["sections_en"] = sections_en
+            response_data["sections_kr"] = sections_kr
+            response_data["highlight_en"] = highlight_en
+            response_data["highlight_kr"] = highlight_kr
+            response_data["full_report_en"] = full_report_en
+            response_data["full_report_kr"] = full_report_kr
+
+        return JSONResponse(response_data)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -4034,6 +4135,308 @@ async def verify_report(
             "details": details,
             "overall_grade": grade,
         })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================================================================
+# Ecosystem Classification & Synergy Blueprint
+# ================================================================
+
+# In-memory cache for latest classification result
+_classification_cache: Dict[str, Any] = {}
+
+
+def _build_classify_prompt(repo_activity: List[Dict[str, Any]]) -> str:
+    """Build the AI prompt for ecosystem classification."""
+    repo_lines = []
+    for repo in repo_activity:
+        name = repo["name"]
+        commit_count = repo["commit_count"]
+        activity = "high" if commit_count >= 20 else ("medium" if commit_count >= 5 else "low")
+        sample_msgs = "; ".join(repo["sample_messages"][:8])
+        desc = REPO_DESCRIPTIONS.get(name, "")
+        desc_line = f" (Known: {desc})" if desc else ""
+        repo_lines.append(f"- {name}{desc_line} [{activity} activity, {commit_count} commits]: {sample_msgs}")
+
+    repos_text = "\n".join(repo_lines)
+
+    return f"""You are analyzing all GitHub repositories of Tokamak Network, an Ethereum Layer 2 company based in Korea.
+
+They build ZK-EVM privacy channels, TON token staking/governance, and a Rollup Hub for one-click L2 deployment.
+
+Below is a list of repositories with their recent commit messages:
+
+{repos_text}
+
+Classify each repository into ONE primary domain from this list:
+- Privacy & Zero-Knowledge
+- DeFi & Staking
+- Infrastructure
+- Developer Tools
+- AI & Automation
+- Gaming
+- Governance
+- Frontend & UX
+- Research
+- Other
+
+Then identify cross-domain synergies and generate a 3-phase (6-month) roadmap blueprint.
+
+Respond with ONLY valid JSON (no markdown fences, no preamble) in this exact structure:
+{{
+  "domains": [
+    {{
+      "name": "Domain Name",
+      "repos": [{{"name": "repo-name", "description": "1-sentence description inferred from commits", "activity_level": "high|medium|low"}}],
+      "summary": "2-sentence domain summary"
+    }}
+  ],
+  "synergies": [
+    {{
+      "domains": ["Domain1", "Domain2"],
+      "title": "Short synergy title",
+      "description": "How these domains could combine for new capability",
+      "involved_repos": ["repo1", "repo2"],
+      "potential": "high|medium"
+    }}
+  ],
+  "blueprint": {{
+    "vision": "One paragraph vision statement for Tokamak Network's next 6 months",
+    "phases": [
+      {{"timeframe": "1-2 months", "goals": ["goal1", "goal2"], "key_repos": ["repo1"]}},
+      {{"timeframe": "3-4 months", "goals": ["goal1", "goal2"], "key_repos": ["repo1"]}},
+      {{"timeframe": "5-6 months", "goals": ["goal1", "goal2"], "key_repos": ["repo1"]}}
+    ],
+    "key_synergies_to_pursue": ["synergy title 1", "synergy title 2"]
+  }}
+}}
+
+Include ALL repositories. Generate 3-6 synergies. Be specific and actionable in the blueprint."""
+
+
+@app.post("/api/classify")
+async def classify_ecosystem(
+    file: UploadFile = File(...),
+    model: Optional[str] = Form(None),
+):
+    """Classify all repos from CSV into domains, identify synergies, and generate a blueprint."""
+    global _classification_cache
+    try:
+        refresh_env()
+        content = await file.read()
+        content_str = content.decode("utf-8")
+
+        parsed = parse_csv_content(content_str)
+        repo_data = parsed["repos"]
+
+        if not repo_data:
+            raise HTTPException(status_code=400, detail="No repository data found in CSV")
+
+        # Build per-repo activity summary
+        repo_activity = []
+        for repo_name, payload in repo_data.items():
+            commits = payload.get("commits", [])
+            messages = []
+            for c in commits:
+                msg = (c.get("message") or "").strip()
+                if msg and not msg.lower().startswith("merge "):
+                    messages.append(msg.split("\n")[0][:120])
+            commit_count = len(messages)
+            repo_activity.append({
+                "name": repo_name,
+                "commit_count": commit_count,
+                "sample_messages": messages[:12],
+            })
+
+        # Sort by activity
+        repo_activity.sort(key=lambda r: r["commit_count"], reverse=True)
+
+        selected_model = model or get_tokamak_model()
+        prompt = _build_classify_prompt(repo_activity)
+
+        import json as _json
+
+        errors: List[str] = []
+        response = generate_with_llm(
+            prompt,
+            max_tokens=8000,
+            model=selected_model,
+            timeout_override=300,
+            errors=errors,
+        )
+
+        if not response:
+            error_detail = "; ".join(errors) if errors else "All AI providers failed"
+            raise HTTPException(status_code=502, detail=f"AI classification failed: {error_detail}")
+
+        # Parse JSON from response
+        def _extract_json(text: str) -> Optional[dict]:
+            """Try multiple strategies to extract JSON from AI response."""
+            text = text.strip()
+            if "```" in text:
+                text = re.sub(r"```(?:json)?\s*\n?", "", text).strip()
+            first_brace = text.find("{")
+            if first_brace > 0:
+                text = text[first_brace:]
+            # Strategy 1: direct parse
+            try:
+                return _json.loads(text)
+            except (_json.JSONDecodeError, ValueError):
+                pass
+            # Strategy 2: repair truncated JSON
+            open_braces = text.count("{") - text.count("}")
+            open_brackets = text.count("[") - text.count("]")
+            if open_braces > 0 or open_brackets > 0:
+                repaired = text.rstrip(",: \n\t")
+                if repaired.count('"') % 2 == 1:
+                    last_q = repaired.rfind('"')
+                    repaired = repaired[:last_q + 1]
+                repaired = repaired.rstrip(",: \n\t")
+                repaired += "]" * max(0, open_brackets) + "}" * max(0, open_braces)
+                try:
+                    return _json.loads(repaired)
+                except (_json.JSONDecodeError, ValueError):
+                    pass
+            # Strategy 3: find balanced braces
+            if first_brace != -1 or text.startswith("{"):
+                depth = 0
+                start = text.find("{")
+                for i in range(start, len(text)):
+                    if text[i] == "{":
+                        depth += 1
+                    elif text[i] == "}":
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return _json.loads(text[start:i + 1])
+                            except (_json.JSONDecodeError, ValueError):
+                                break
+            return None
+
+        result = _extract_json(response)
+        if result is None:
+            print(f"[CLASSIFY] Failed to parse JSON. Response preview: {response[:500]}")
+            raise HTTPException(status_code=502, detail="Failed to parse AI classification response as JSON")
+
+        # Validate structure
+        if "domains" not in result:
+            result["domains"] = []
+        if "synergies" not in result:
+            result["synergies"] = []
+        if "blueprint" not in result:
+            result["blueprint"] = {"vision": "", "phases": [], "key_synergies_to_pursue": []}
+
+        # Cache result
+        _classification_cache = {
+            "success": True,
+            "domains": result["domains"],
+            "synergies": result["synergies"],
+            "blueprint": result["blueprint"],
+            "model": selected_model,
+            "repo_count": len(repo_activity),
+        }
+
+        return JSONResponse(_classification_cache)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/classify/domains")
+async def get_cached_domains():
+    """Return cached classification or a lightweight version from static data."""
+    if _classification_cache:
+        return JSONResponse(_classification_cache)
+
+    # Build lightweight fallback from REPO_DESCRIPTIONS + PROJECT_REPOS
+    domain_map = {
+        "Privacy & Zero-Knowledge": [],
+        "DeFi & Staking": [],
+        "Infrastructure": [],
+    }
+    project_domain = {
+        "Ooo": "Privacy & Zero-Knowledge",
+        "Eco": "DeFi & Staking",
+        "TRH": "Infrastructure",
+    }
+    for project, repos in PROJECT_REPOS.items():
+        domain = project_domain[project]
+        for repo in repos:
+            desc = REPO_DESCRIPTIONS.get(repo, f"Part of {project} project")
+            domain_map[domain].append({"name": repo, "description": desc, "activity_level": "unknown"})
+
+    # Add other known repos
+    other_repos = []
+    for repo, desc in REPO_DESCRIPTIONS.items():
+        found = any(repo in repos for repos in PROJECT_REPOS.values())
+        if not found:
+            other_repos.append({"name": repo, "description": desc, "activity_level": "unknown"})
+
+    domains = []
+    for name, repos in domain_map.items():
+        if repos:
+            domains.append({"name": name, "repos": repos, "summary": f"{len(repos)} repositories in this domain."})
+    if other_repos:
+        domains.append({"name": "Other", "repos": other_repos, "summary": f"{len(other_repos)} additional repositories."})
+
+    return JSONResponse({
+        "success": True,
+        "domains": domains,
+        "synergies": [],
+        "blueprint": {"vision": "", "phases": [], "key_synergies_to_pursue": []},
+        "model": None,
+        "repo_count": sum(len(d["repos"]) for d in domains),
+        "cached": False,
+    })
+
+
+@app.post("/api/infographic")
+async def generate_infographic(
+    file: UploadFile = File(...),
+    classification: Optional[str] = Form(None),
+):
+    """Generate an ecosystem infographic HTML page from CSV data."""
+    from infographic import classify_repos_from_csv, generate_infographic_html, DEFAULT_DESCRIPTIONS
+    try:
+        content = await file.read()
+        content_str = content.decode("utf-8")
+
+        # Parse CSV to get repo commit counts
+        repo_commits: Dict[str, int] = defaultdict(int)
+        reader = csv.DictReader(io.StringIO(content_str))
+        for row in reader:
+            if row.get("source") != "github":
+                continue
+            repo = row.get("repository", "").strip('"')
+            if not repo:
+                continue
+            if row.get("type") == "commit":
+                msg = (row.get("message") or "").strip('"')
+                if msg and not msg.lower().startswith("merge "):
+                    repo_commits[repo] += 1
+
+        # Parse optional classification
+        cat_map = None
+        if classification:
+            try:
+                cat_map = json.loads(classification)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Detect date range
+        parsed = parse_csv_content(content_str)
+        _, start_date, end_date, _ = detect_scope_from_timestamps(parsed["timestamps"])
+        date_range = {"start": start_date, "end": end_date}
+
+        # Classify and generate
+        categorized = classify_repos_from_csv(repo_commits, DEFAULT_DESCRIPTIONS, cat_map)
+        html = generate_infographic_html(categorized, date_range=date_range)
+
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse(content=html)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
