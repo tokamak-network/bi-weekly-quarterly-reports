@@ -1563,26 +1563,6 @@ export default function Home() {
                 >
                   {loading ? 'Generating...' : 'GENERATE REPORT'}
                 </button>
-                <button
-                  onClick={async () => {
-                    if (!file) return
-                    const fd = new FormData()
-                    fd.append('file', file)
-                    try {
-                      const res = await fetch('http://localhost:8010/api/infographic', { method: 'POST', body: fd })
-                      if (!res.ok) throw new Error(await res.text())
-                      const blob = await res.blob()
-                      const url = URL.createObjectURL(blob)
-                      window.open(url, '_blank')
-                    } catch (e) {
-                      alert(`Infographic error: ${e instanceof Error ? e.message : e}`)
-                    }
-                  }}
-                  disabled={!file || loading}
-                  className="mt-3 w-full rounded-full border-2 border-blue-500 bg-white px-6 py-3 text-sm font-semibold text-blue-600 shadow-sm transition hover:bg-blue-50 hover:shadow-lg disabled:opacity-50"
-                >
-                  🗺️ Ecosystem Map
-                </button>
               </div>
             </section>
 
