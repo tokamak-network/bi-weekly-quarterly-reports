@@ -378,9 +378,11 @@ def generate_html_report(
         accomplishments = parsed_repo["accomplishments"] if parsed_repo else []
         accomplishments_html = ""
         for acc in accomplishments[:7]:
+            acc = acc.replace('**', '').strip()
             # Split on ": " to get title and description
             if ": " in acc:
                 title, desc = acc.split(": ", 1)
+                title = title.replace('**', '').strip()
                 accomplishments_html += f'<li style="margin-bottom:8px;line-height:1.5;"><strong>{_escape(title)}</strong></li>\n'
             else:
                 accomplishments_html += f'<li style="margin-bottom:8px;line-height:1.5;"><strong>{_escape(acc)}</strong></li>\n'
@@ -553,8 +555,10 @@ def generate_html_report(
             kr_accomplishments = pr_kr.get("accomplishments", [])
             kr_accs_html = ""
             for acc in kr_accomplishments[:7]:
+                acc = acc.replace('**', '').strip()
                 if ": " in acc:
                     t, d = acc.split(": ", 1)
+                    t = t.replace('**', '').strip()
                     kr_accs_html += '<li style="margin-bottom:8px;line-height:1.5;"><strong>{}</strong></li>\n'.format(_escape(t))
                 else:
                     kr_accs_html += '<li style="margin-bottom:8px;line-height:1.5;"><strong>{}</strong></li>\n'.format(_escape(acc))
