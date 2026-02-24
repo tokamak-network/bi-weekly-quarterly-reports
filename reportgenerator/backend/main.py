@@ -2969,7 +2969,7 @@ async def generate_report(
                 return {"project": rn, "title": rn, "content": content}
 
             # Use more workers for comprehensive to speed up large reports
-            max_workers = min(8, len(entries)) if report_format == "comprehensive" else min(5, len(entries))
+            max_workers = min(15, len(entries)) if report_format == "comprehensive" else min(8, len(entries))
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 sections = list(executor.map(_gen_repo_section, entries))
         else:
