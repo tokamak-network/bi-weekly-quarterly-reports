@@ -103,94 +103,64 @@ DEFAULT_SYNERGIES = [
     {
         "domains": ["Privacy & ZK", "Infrastructure"],
         "title": "Private Rollup Execution",
-        "description": "ZK-EVM integrates with Thanos rollup stack for private L2 transaction execution",
+        "description": "ZK-EVM proof generation runs on top of the Thanos rollup stack, enabling private L2 transaction execution by combining zero-knowledge circuits with optimistic rollup settlement.",
         "involved_repos": ["Tokamak-zk-EVM", "tokamak-thanos"],
         "potential": "high",
     },
     {
         "domains": ["DeFi & Staking", "Governance"],
         "title": "Staking-Powered Governance",
-        "description": "TON stakers participate in DAO governance with voting weight proportional to stake",
+        "description": "TON stakers gain voting power in the DAO proportional to their stake, linking economic commitment to governance influence and aligning incentives across the network.",
         "involved_repos": ["ton-staking-v2", "tokamak-dao-v2"],
         "potential": "high",
     },
     {
         "domains": ["Infrastructure", "Developer Tools"],
         "title": "Rollup Developer SDK",
-        "description": "TRH SDK enables one-click deployment on Thanos rollup infrastructure",
+        "description": "The TRH SDK wraps the Thanos rollup stack into a developer-friendly interface, enabling one-click L2 chain deployment without managing low-level infrastructure.",
         "involved_repos": ["trh-sdk", "tokamak-thanos-stack"],
         "potential": "high",
     },
     {
         "domains": ["AI & Automation", "Privacy & ZK"],
         "title": "AI-Powered Security Auditing",
-        "description": "SentinAI performs automated security audits on ZK-EVM smart contracts",
+        "description": "SentinAI uses automated analysis to audit ZK-EVM smart contracts, detecting potential vulnerabilities in zero-knowledge circuit implementations.",
         "involved_repos": ["SentinAI", "Tokamak-zk-EVM-contracts"],
         "potential": "medium",
     },
     {
         "domains": ["Privacy & ZK", "Governance"],
         "title": "Private Voting",
-        "description": "ZK proofs enable confidential on-chain governance voting",
+        "description": "Zero-knowledge proofs allow governance votes to be verified without revealing individual choices, enabling confidential on-chain voting in the DAO.",
         "involved_repos": ["zk-dex-d1-private-voting", "tokamak-dao-v2"],
         "potential": "medium",
     },
     {
         "domains": ["DeFi & Staking", "Infrastructure"],
         "title": "L2 Staking Infrastructure",
-        "description": "Staking contracts deployed on Thanos L2 for lower gas costs",
+        "description": "Staking contracts are deployed on the Thanos L2 rollup, reducing gas costs for stakers while inheriting Ethereum L1 security guarantees.",
         "involved_repos": ["ton-staking-v2", "tokamak-thanos"],
         "potential": "medium",
     },
     {
         "domains": ["Infrastructure", "AI & Automation"],
         "title": "Automated Infrastructure Monitoring",
-        "description": "AI agents monitor rollup node health and performance",
+        "description": "AI agents analyze DRB node metrics and logs to detect anomalies in rollup sequencing and random beacon generation.",
         "involved_repos": ["DRB-node", "SentinAI"],
         "potential": "low",
     },
     {
         "domains": ["Research", "DeFi & Staking"],
         "title": "Tokenomics Research",
-        "description": "Economic research informs staking reward design and token distribution",
+        "description": "Economic modeling research directly informs staking reward curves and token distribution parameters in the staking contracts.",
         "involved_repos": ["tokamak-economics-whitepaper-v2", "ton-staking-v2"],
         "potential": "high",
     },
 ]
 
-# Default blueprint data
-DEFAULT_BLUEPRINT = {
-    "vision": "Tokamak Network is building a comprehensive Ethereum Layer 2 ecosystem that combines privacy-preserving ZK technology, sustainable staking economics, and one-click rollup deployment to make blockchain accessible to every developer and user.",
-    "phases": [
-        {
-            "timeframe": "1-2 months",
-            "goals": [
-                "Ship ZK-EVM testnet with private transaction support",
-                "Launch TON staking v2 with improved reward distribution",
-                "Release TRH SDK beta for developer testing",
-            ],
-            "key_repos": ["Tokamak-zk-EVM", "ton-staking-v2", "trh-sdk"],
-        },
-        {
-            "timeframe": "3-4 months",
-            "goals": [
-                "Deploy Thanos mainnet with full rollup support",
-                "Integrate DAO governance with staking weights",
-                "Launch SentinAI automated auditing service",
-            ],
-            "key_repos": ["tokamak-thanos", "tokamak-dao-v2", "SentinAI"],
-        },
-        {
-            "timeframe": "5-6 months",
-            "goals": [
-                "Enable cross-rollup communication via Rollup Hub",
-                "Launch privacy-preserving DeFi applications",
-                "Open ecosystem grants program for builders",
-            ],
-            "key_repos": ["tokamak-rollup-hub-v2", "dust-protocol", "tokamak-landing-page"],
-        },
-    ],
-}
+# Default blueprint is no longer used — blueprint is generated dynamically
+# from actual repo activity data in _build_blueprint_from_activity().
+DEFAULT_BLUEPRINT = None
 
 
 def _load_logo_base64() -> str:
@@ -249,10 +219,12 @@ def classify_repos_from_csv(
         else:
             repo_to_cat[repo] = "Infrastructure"
 
-    # Build result
+    # Build result — only include repos with actual commits (> 0)
     result = {cat: [] for cat in CATEGORIES}  # type: Dict[str, List[Dict[str, Any]]]
     seen = set()  # type: set
     for repo, commits in sorted(repo_commits.items(), key=lambda x: -x[1]):
+        if commits <= 0:
+            continue
         cat = repo_to_cat.get(repo, "Infrastructure")
         if cat not in CATEGORIES:
             cat = "Infrastructure"
@@ -265,18 +237,8 @@ def classify_repos_from_csv(
             "commits": commits,
         })
 
-    # Also add repos from default classification that aren't in CSV
-    for cat, repos in cat_map.items():
-        if cat not in CATEGORIES:
-            continue
-        for repo in repos:
-            if repo not in seen:
-                seen.add(repo)
-                result[cat].append({
-                    "name": repo,
-                    "description": desc.get(repo, _infer_description(repo)),
-                    "commits": 0,
-                })
+    # Only show repos that have actual commits in the CSV data.
+    # Do NOT add repos from default classification that have 0 commits.
 
     return result
 
@@ -321,7 +283,27 @@ def generate_infographic_html(
 
     # Use defaults if not provided
     syn_data = synergies if synergies else DEFAULT_SYNERGIES
-    bp_data = blueprint if blueprint else DEFAULT_BLUEPRINT
+
+    # Filter synergies: only keep those whose involved repos have actual commits
+    active_repo_names = set()
+    for repos in categorized_repos.values():
+        for r in repos:
+            if r["commits"] > 0:
+                active_repo_names.add(r["name"])
+
+    # Also filter: only keep synergies where both domains have active repos
+    active_domains = {cat for cat, repos in categorized_repos.items() if repos}
+    filtered_synergies = []
+    for s in syn_data:
+        domains = s.get("domains", [])
+        involved = s.get("involved_repos", [])
+        # Both domains must have repos and at least one involved repo must be active
+        if (len(domains) >= 2
+                and domains[0] in active_domains
+                and domains[1] in active_domains
+                and any(r in active_repo_names for r in involved)):
+            filtered_synergies.append(s)
+    syn_data = filtered_synergies
 
     # ── View A: Domain Landscape ──
     landscape_html = _build_landscape_html(categorized_repos, total_repos, total_commits, active_categories)
@@ -329,8 +311,8 @@ def generate_infographic_html(
     # ── View B: Synergy Network Graph ──
     synergy_html = _build_synergy_html(categorized_repos, syn_data)
 
-    # ── View C: Blueprint Timeline ──
-    blueprint_html = _build_blueprint_html(bp_data, categorized_repos)
+    # ── View C: Blueprint Timeline (always derived from activity data) ──
+    blueprint_html = _build_blueprint_html(blueprint, categorized_repos)
 
     # ── Synergy data as JSON for tooltips ──
     syn_json = json.dumps(syn_data)
@@ -345,48 +327,42 @@ def generate_infographic_html(
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
 body{{
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-    background:#0D1117;
-    color:#C9D1D9;
+    background:#f8f9fa;
+    color:#1a1a1a;
     line-height:1.5;
     min-height:100vh;
 }}
 
 /* Header */
 .header{{
-    background:linear-gradient(135deg,#161B22 0%,#0D1117 100%);
-    color:white;
+    background:#fff;
+    color:#1a1a1a;
     text-align:center;
-    padding:36px 24px 20px;
+    padding:40px 24px 24px;
     position:relative;
-    overflow:hidden;
-    border-bottom:1px solid #21262D;
-}}
-.header::before{{
-    content:'';
-    position:absolute;
-    top:0;left:0;right:0;bottom:0;
-    background:radial-gradient(ellipse at 50% 0%,rgba(42,114,229,0.12) 0%,transparent 70%);
-    pointer-events:none;
+    border-bottom:1px solid #e8e8e8;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }}
 .header-logo{{
-    height:64px;
-    margin-bottom:12px;
-    filter:drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+    height:448px;
+    margin-bottom:16px;
+    filter:drop-shadow(0 2px 12px rgba(0,0,0,0.06));
 }}
 .header h1{{
     font-size:28px;
     font-weight:700;
     letter-spacing:-0.5px;
+    color:#1a1a1a;
     margin-bottom:4px;
 }}
 .header .subtitle{{
     font-size:14px;
-    color:#8B949E;
+    color:#555;
     font-weight:400;
 }}
 .header .date-label{{
     font-size:12px;
-    color:#484F58;
+    color:#888;
     margin-top:6px;
 }}
 
@@ -395,16 +371,17 @@ body{{
     display:flex;
     justify-content:center;
     gap:0;
-    background:#161B22;
-    border-bottom:2px solid #21262D;
+    background:#fff;
+    border-bottom:1px solid #e8e8e8;
     position:sticky;
     top:0;
     z-index:100;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }}
 .tab-btn{{
     background:none;
     border:none;
-    color:#8B949E;
+    color:#888;
     font-size:15px;
     font-weight:500;
     padding:14px 28px;
@@ -415,11 +392,11 @@ body{{
     position:relative;
 }}
 .tab-btn:hover{{
-    color:#C9D1D9;
-    background:rgba(42,114,229,0.06);
+    color:#1a1a1a;
+    background:rgba(42,114,229,0.04);
 }}
 .tab-btn.active{{
-    color:#fff;
+    color:#2A72E5;
     font-weight:700;
     border-bottom-color:#2A72E5;
 }}
@@ -443,12 +420,12 @@ body{{
     justify-content:center;
     gap:48px;
     padding:20px 24px;
-    background:#161B22;
-    border-bottom:1px solid #21262D;
+    background:#fff;
+    border-bottom:1px solid #e8e8e8;
 }}
 .stat{{display:flex;flex-direction:column;align-items:center;}}
 .stat-num{{font-size:26px;font-weight:700;color:#2A72E5;}}
-.stat-label{{font-size:11px;color:#8B949E;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}}
+.stat-label{{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}}
 
 .legend,.activity-legend{{
     display:flex;
@@ -456,22 +433,22 @@ body{{
     flex-wrap:wrap;
     gap:14px;
     padding:12px 24px;
-    background:#161B22;
-    border-bottom:1px solid #21262D;
+    background:#fff;
+    border-bottom:1px solid #f0f0f0;
 }}
 .legend-item{{
     display:inline-flex;
     align-items:center;
     gap:6px;
     font-size:12px;
-    color:#8B949E;
+    color:#555;
 }}
 .legend-dot{{
     width:9px;height:9px;border-radius:50%;
     display:inline-block;flex-shrink:0;
 }}
 .legend-label{{
-    font-size:11px;color:#484F58;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;
+    font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;
 }}
 
 .landscape-grid{{
@@ -484,28 +461,32 @@ body{{
 }}
 
 .category-section{{
-    background:#161B22;
-    border-radius:10px;
+    background:#fff;
+    border-radius:12px;
     overflow:hidden;
-    border:1px solid #21262D;
+    border:1px solid #e8e8e8;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
     transition:border-color 0.2s;
 }}
 .category-section:hover{{
-    border-color:#30363D;
+    border-color:#d0d0d0;
 }}
 .category-header{{
     display:flex;
     align-items:center;
     gap:10px;
-    padding:12px 16px;
-    color:white;
+    padding:14px 16px;
     font-weight:600;
     font-size:14px;
+    color:#1a1a1a;
+    background:#fff;
+    border-left:4px solid #888;
 }}
 .category-icon{{font-size:16px;}}
 .category-title{{flex:1;}}
 .category-count{{
-    background:rgba(255,255,255,0.15);
+    background:#f0f0f0;
+    color:#555;
     padding:2px 10px;
     border-radius:10px;
     font-size:11px;
@@ -522,7 +503,7 @@ body{{
     display:block;
     padding:8px 10px;
     border-radius:6px;
-    background:#0D1117;
+    background:#f8f9fa;
     text-decoration:none;
     color:inherit;
     transition:all 0.15s;
@@ -530,8 +511,8 @@ body{{
     border:1px solid transparent;
 }}
 .repo-card:hover{{
-    background:#1C2128;
-    border-color:#30363D;
+    background:#f0f0f0;
+    border-color:#e8e8e8;
     transform:translateX(2px);
 }}
 .repo-header{{
@@ -547,12 +528,12 @@ body{{
 .repo-name{{
     font-weight:600;
     font-size:12px;
-    color:#E6EDF3;
+    color:#1a1a1a;
     word-break:break-all;
 }}
 .repo-desc{{
     font-size:11px;
-    color:#8B949E;
+    color:#555;
     line-height:1.3;
     display:-webkit-box;
     -webkit-line-clamp:2;
@@ -593,12 +574,12 @@ body{{
     align-items:center;
     gap:8px;
     font-size:12px;
-    color:#8B949E;
+    color:#555;
 }}
 .synergy-legend-line{{
     width:32px;
     height:0;
-    border-top:3px solid #8B949E;
+    border-top:3px solid #888;
 }}
 .synergy-legend-line.dashed{{
     border-top-style:dashed;
@@ -609,46 +590,59 @@ body{{
 }}
 .synergy-legend-line.thin{{
     border-top-width:2px;
-    border-top-color:#8B949E;
+    border-top-color:#888;
 }}
 
 /* Tooltip */
 .tooltip{{
     position:fixed;
-    background:#1C2128;
-    border:1px solid #30363D;
-    border-radius:8px;
-    padding:12px 16px;
-    max-width:320px;
+    background:#fff;
+    border:1px solid #e8e8e8;
+    border-radius:12px;
+    padding:14px 18px;
+    max-width:360px;
     font-size:12px;
-    color:#C9D1D9;
+    color:#1a1a1a;
     pointer-events:none;
     z-index:1000;
     display:none;
-    box-shadow:0 8px 24px rgba(0,0,0,0.4);
+    box-shadow:0 4px 16px rgba(0,0,0,0.10);
 }}
 .tooltip-title{{
     font-weight:700;
-    font-size:13px;
-    color:#E6EDF3;
-    margin-bottom:4px;
+    font-size:14px;
+    color:#1a1a1a;
+    margin-bottom:6px;
 }}
+.tooltip-level{{
+    display:inline-block;
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.5px;
+    padding:2px 8px;
+    border-radius:4px;
+    margin-bottom:6px;
+}}
+.tooltip-level.high{{background:#EFF6FF;color:#2A72E5;}}
+.tooltip-level.medium{{background:#FFF7ED;color:#EA580C;}}
+.tooltip-level.low{{background:#F8FAFC;color:#64748B;}}
 .tooltip-desc{{
-    color:#8B949E;
-    line-height:1.4;
+    color:#555;
+    line-height:1.5;
+    margin-bottom:8px;
 }}
 .tooltip-repos{{
-    margin-top:6px;
     display:flex;
     flex-wrap:wrap;
     gap:4px;
 }}
 .tooltip-chip{{
-    background:#21262D;
+    background:#f0f0f0;
     padding:2px 8px;
     border-radius:4px;
     font-size:10px;
-    color:#8B949E;
+    color:#555;
 }}
 
 /* ── View C: Blueprint ── */
@@ -659,17 +653,18 @@ body{{
 }}
 .blueprint-vision{{
     text-align:center;
-    padding:20px 32px;
-    background:linear-gradient(135deg,rgba(42,114,229,0.08) 0%,rgba(124,58,237,0.08) 100%);
-    border:1px solid #21262D;
+    padding:24px 32px;
+    background:#fff;
+    border:1px solid #e8e8e8;
     border-radius:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
     margin-bottom:32px;
     font-size:15px;
-    color:#C9D1D9;
+    color:#444;
     line-height:1.6;
 }}
 .blueprint-vision .vision-label{{
-    font-size:11px;
+    font-size:0.75rem;
     text-transform:uppercase;
     letter-spacing:1px;
     color:#2A72E5;
@@ -704,7 +699,7 @@ body{{
     height:16px;
     border-radius:50%;
     background:#2A72E5;
-    border:3px solid #0D1117;
+    border:3px solid #f8f9fa;
     position:relative;
     z-index:1;
     margin:20px auto 16px;
@@ -713,14 +708,15 @@ body{{
 .phase:nth-child(3) .phase-dot{{background:#16A34A;}}
 
 .phase-card{{
-    background:#161B22;
-    border:1px solid #21262D;
-    border-radius:10px;
-    padding:20px;
+    background:#fff;
+    border:1px solid #e8e8e8;
+    border-radius:12px;
+    padding:24px;
     margin-top:8px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.04);
 }}
 .phase-timeframe{{
-    font-size:11px;
+    font-size:0.75rem;
     text-transform:uppercase;
     letter-spacing:0.8px;
     color:#2A72E5;
@@ -733,7 +729,7 @@ body{{
 .phase-title{{
     font-size:16px;
     font-weight:700;
-    color:#E6EDF3;
+    color:#1a1a1a;
     margin-bottom:12px;
 }}
 .phase-goals{{
@@ -742,9 +738,9 @@ body{{
 }}
 .phase-goals li{{
     font-size:13px;
-    color:#C9D1D9;
+    color:#444;
     padding:6px 0;
-    border-bottom:1px solid #21262D;
+    border-bottom:1px solid #f0f0f0;
     display:flex;
     align-items:flex-start;
     gap:8px;
@@ -752,7 +748,7 @@ body{{
 .phase-goals li:last-child{{border-bottom:none;}}
 .phase-goals li::before{{
     content:'→';
-    color:#484F58;
+    color:#888;
     flex-shrink:0;
     font-weight:700;
 }}
@@ -767,8 +763,8 @@ body{{
     border-radius:4px;
     font-size:10px;
     font-weight:600;
-    background:#21262D;
-    color:#8B949E;
+    background:#f0f0f0;
+    color:#555;
 }}
 
 .you-are-here{{
@@ -791,26 +787,26 @@ body{{
 .footer{{
     text-align:center;
     padding:24px;
-    color:#484F58;
+    color:#888;
     font-size:11px;
-    border-top:1px solid #21262D;
+    border-top:1px solid #e8e8e8;
     margin-top:32px;
 }}
 .footer a{{color:#2A72E5;text-decoration:none;}}
 
 /* Print */
 @media print{{
-    body{{background:white;color:#1E293B;}}
+    body{{background:white;color:#1a1a1a;}}
     .tab-bar{{position:static;}}
     .tab-panel{{display:block !important;page-break-before:always;}}
     .tab-panel:first-of-type{{page-break-before:auto;}}
-    .header,.category-section,.phase-card{{border-color:#E2E8F0;}}
     .tooltip{{display:none !important;}}
 }}
 
 /* Responsive */
 @media(max-width:768px){{
     .header h1{{font-size:22px;}}
+    .header-logo{{height:200px;}}
     .stats-bar{{gap:20px;}}
     .stat-num{{font-size:20px;}}
     .landscape-grid{{grid-template-columns:1fr;padding:16px;}}
@@ -907,13 +903,16 @@ document.querySelectorAll('.domain-node').forEach(function(node) {{
     node.addEventListener('mouseleave', hideTip);
 }});
 
-// Synergy line hover
+// Synergy line hover — shows reasoning, repos, and level
 document.querySelectorAll('.synergy-line').forEach(function(line) {{
     line.addEventListener('mouseenter', function(e) {{
         var idx = parseInt(this.getAttribute('data-idx'));
         var s = synergyData[idx];
         if (!s) return;
+        var lvl = (s.potential || 'medium').toLowerCase();
+        var lvlLabel = lvl.charAt(0).toUpperCase() + lvl.slice(1) + ' Synergy';
         var h = '<div class="tooltip-title">' + s.title + '</div>';
+        h += '<span class="tooltip-level ' + lvl + '">' + lvlLabel + '</span>';
         h += '<div class="tooltip-desc">' + s.description + '</div>';
         h += '<div class="tooltip-repos">' + (s.involved_repos||[]).map(function(r){{return '<span class="tooltip-chip">'+r+'</span>';}}).join('') + '</div>';
         showTip(e, h);
@@ -921,7 +920,8 @@ document.querySelectorAll('.synergy-line').forEach(function(line) {{
     line.addEventListener('mousemove', function(e) {{
         var x = e.clientX + 16;
         var y = e.clientY + 16;
-        if (x + 320 > window.innerWidth) x = e.clientX - 336;
+        if (x + 360 > window.innerWidth) x = e.clientX - 376;
+        if (y + 200 > window.innerHeight) y = e.clientY - 200;
         tip.style.left = x + 'px';
         tip.style.top = y + 'px';
     }});
@@ -994,7 +994,7 @@ def _build_landscape_html(
         cat_commits = sum(r["commits"] for r in repos)
         categories_html.append(f'''
             <div class="category-section" data-category="{cat_name}">
-                <div class="category-header" style="background:{cat_info["color"]};">
+                <div class="category-header" style="border-left-color:{cat_info["color"]};">
                     <span class="category-icon">{cat_info["icon"]}</span>
                     <span class="category-title">{cat_name}</span>
                     <span class="category-count">{repo_count} repos · {cat_commits} commits</span>
@@ -1059,11 +1059,18 @@ def _build_synergy_html(
         dash = "" if potential in ("high", "medium") else 'stroke-dasharray="8,4"'
         opacity = 0.7 if potential == "high" else 0.4 if potential == "medium" else 0.25
         color = "#2A72E5" if potential == "high" else "#8B949E"
+        # Visible line
+        lines_svg.append(
+            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="{color}" stroke-width="{stroke_width}" {dash} '
+            f'opacity="{opacity}" style="pointer-events:none;" />'
+        )
+        # Invisible wider overlay for easier hover targeting
         lines_svg.append(
             f'<line class="synergy-line" data-idx="{idx}" '
             f'x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-            f'stroke="{color}" stroke-width="{stroke_width}" {dash} '
-            f'opacity="{opacity}" style="cursor:pointer;pointer-events:stroke;" />'
+            f'stroke="transparent" stroke-width="18" '
+            f'style="cursor:pointer;pointer-events:stroke;" />'
         )
 
     # Build SVG nodes for domains
@@ -1108,7 +1115,7 @@ def _build_synergy_html(
         # Repo count badge
         nodes_svg.append(
             f'<text x="{x:.1f}" y="{y + node_r + 16:.1f}" text-anchor="middle" '
-            f'fill="#8B949E" font-size="10">{repo_count} repos</text>'
+            f'fill="#888" font-size="10">{repo_count} repos</text>'
         )
 
     # Center hub node
@@ -1125,7 +1132,7 @@ def _build_synergy_html(
         x, y = domain_positions[domain]
         center_lines.append(
             f'<line x1="{CX}" y1="{CY}" x2="{x:.1f}" y2="{y:.1f}" '
-            f'stroke="#21262D" stroke-width="1" opacity="0.5" />'
+            f'stroke="#e8e8e8" stroke-width="1" opacity="0.5" />'
         )
 
     svg = f'''
@@ -1164,14 +1171,85 @@ def _build_synergy_html(
     '''
 
 
+def _build_blueprint_from_activity(
+    categorized_repos: Dict[str, List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """Generate blueprint data purely from actual repo activity levels.
+
+    Repos are sorted by commit count and grouped into three tiers:
+      - Active Development: repos with ≥20 commits
+      - Emerging: repos with 5–19 commits
+      - Exploratory: repos with 1–4 commits
+
+    No speculative language — only factual descriptions of current work.
+    """
+    all_repos = []
+    for cat_name, repos in categorized_repos.items():
+        for r in repos:
+            if r["commits"] > 0:
+                all_repos.append({**r, "category": cat_name})
+
+    all_repos.sort(key=lambda x: -x["commits"])
+
+    active = [r for r in all_repos if r["commits"] >= 20]
+    emerging = [r for r in all_repos if 5 <= r["commits"] < 20]
+    exploratory = [r for r in all_repos if 1 <= r["commits"] < 5]
+
+    def _make_goals(repos: list) -> list:
+        goals = []
+        for r in repos[:6]:  # cap at 6 per phase
+            goals.append(f'Active work in {r["name"]} ({r["commits"]} commits) — {r["description"]}')
+        return goals
+
+    # Derive vision from what's actually being built
+    domain_commits = defaultdict(int)
+    for r in all_repos:
+        domain_commits[r["category"]] += r["commits"]
+    top_domains = sorted(domain_commits.items(), key=lambda x: -x[1])[:3]
+    domain_names = [d[0] for d in top_domains]
+    vision = (
+        f"Current development is concentrated across {', '.join(domain_names)}. "
+        f"The ecosystem shows {len(all_repos)} repositories with recent commit activity, "
+        f"with the highest concentration in {domain_names[0] if domain_names else 'infrastructure'}."
+    )
+
+    phases = []
+    if active:
+        phases.append({
+            "timeframe": "Active Development",
+            "goals": _make_goals(active),
+            "key_repos": [r["name"] for r in active[:6]],
+        })
+    if emerging:
+        phases.append({
+            "timeframe": "Emerging",
+            "goals": _make_goals(emerging),
+            "key_repos": [r["name"] for r in emerging[:6]],
+        })
+    if exploratory:
+        phases.append({
+            "timeframe": "Exploratory",
+            "goals": _make_goals(exploratory),
+            "key_repos": [r["name"] for r in exploratory[:6]],
+        })
+
+    return {"vision": vision, "phases": phases}
+
+
 def _build_blueprint_html(
-    blueprint: Dict[str, Any],
+    blueprint: Optional[Dict[str, Any]],
     categorized_repos: Dict[str, List[Dict[str, Any]]],
 ) -> str:
-    """Build the Blueprint/Roadmap Timeline tab content."""
+    """Build the Blueprint/Roadmap Timeline tab content.
 
-    vision = blueprint.get("vision", "")
-    phases = blueprint.get("phases", [])
+    Blueprint is always generated from actual repo activity data.
+    The `blueprint` parameter from AI is ignored to avoid fabrication.
+    """
+
+    # Always derive from real data
+    bp = _build_blueprint_from_activity(categorized_repos)
+    vision = bp.get("vision", "")
+    phases = bp.get("phases", [])
 
     # Build repo -> domain color map
     repo_colors = {}  # type: Dict[str, str]
@@ -1183,12 +1261,17 @@ def _build_blueprint_html(
     if vision:
         vision_html = f'''
         <div class="blueprint-vision">
-            <div class="vision-label">🎯 Ecosystem Vision</div>
+            <div class="vision-label">📊 Ecosystem Activity Summary</div>
             {_escape_html(vision)}
         </div>
         '''
 
-    phase_titles = ["Near-term", "Mid-term", "Long-term"]
+    phase_meta = [
+        {"label": "Active Development", "desc": "High commit activity (20+ commits)", "color": "#2A72E5"},
+        {"label": "Emerging", "desc": "Moderate activity (5–19 commits)", "color": "#7C3AED"},
+        {"label": "Exploratory", "desc": "Early-stage activity (1–4 commits)", "color": "#16A34A"},
+    ]
+
     phases_html = []
     for i, phase in enumerate(phases[:3]):
         timeframe = phase.get("timeframe", f"Phase {i+1}")
@@ -1200,20 +1283,20 @@ def _build_blueprint_html(
         if key_repos:
             chip_items = []
             for rname in key_repos:
-                color = repo_colors.get(rname, "#484F58")
+                color = repo_colors.get(rname, "#888")
                 chip_items.append(
                     f'<span class="phase-chip" style="border-left:3px solid {color};">{_escape_html(rname)}</span>'
                 )
             chips = f'<div class="phase-chips">{"".join(chip_items)}</div>'
 
-        p_title = phase_titles[i] if i < len(phase_titles) else f"Phase {i+1}"
+        meta = phase_meta[i] if i < len(phase_meta) else {"label": timeframe, "desc": "", "color": "#888"}
         phases_html.append(f'''
             <div class="phase">
                 <div class="phase-dot"></div>
-                {"<div class='you-are-here'><span>▼ You are here</span></div>" if i == 0 else ""}
+                {"<div class='you-are-here'><span>▼ Current Focus</span></div>" if i == 0 else ""}
                 <div class="phase-card">
                     <div class="phase-timeframe">{_escape_html(timeframe)}</div>
-                    <div class="phase-title">{p_title}</div>
+                    <div class="phase-title">{_escape_html(meta["desc"])}</div>
                     <ul class="phase-goals">
                         {goals_li}
                     </ul>
