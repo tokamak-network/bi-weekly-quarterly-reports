@@ -4188,8 +4188,8 @@ Respond with ONLY valid JSON (no markdown fences, no preamble) in this exact str
   "domains": [
     {{
       "name": "Domain Name",
-      "repos": [{{"name": "repo-name", "description": "1-sentence description inferred from commits", "activity_level": "high|medium|low"}}],
-      "summary": "2-sentence domain summary"
+      "repos": [{{"name": "repo-name", "description": "Brief description (max 15 words)", "activity_level": "high|medium|low"}}],
+      "summary": "1-sentence domain summary"
     }}
   ],
   "synergies": [
