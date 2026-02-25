@@ -341,6 +341,7 @@ def generate_html_report(
     total_contributors = stats.get("total_contributors", 0)
     net_change = stats.get("net_change", 0)
     lines_per_person = total_changes // total_contributors if total_contributors > 0 else 0
+    repos_per_person = "{:.1f}".format(total_repos / total_contributors) if total_contributors > 0 else "0"
 
     # Build repo cards HTML
     repo_cards_html = ""
@@ -517,6 +518,20 @@ def generate_html_report(
     <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
     <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{_escape(headline_h3)}</h3>
     <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{_escape(remaining_summary)}</p>
+
+    <!-- PRODUCTIVITY METRICS -->
+    <div style="margin-top:28px;display:flex;gap:16px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;background:#F0F7FF;border-radius:10px;padding:20px 24px;border:1px solid #D4E5FF;">
+        <div style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Lines / Person</div>
+        <div style="font-size:1.8rem;font-weight:800;color:#1a1a1a;">{_fmt(lines_per_person)}</div>
+        <div style="font-size:0.8rem;color:#666;margin-top:4px;">{_fmt(total_changes)} lines across {total_contributors} contributors</div>
+      </div>
+      <div style="flex:1;min-width:200px;background:#F0FFF4;border-radius:10px;padding:20px 24px;border:1px solid #D4F5DC;">
+        <div style="font-size:0.7rem;font-weight:600;color:#16a34a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Repos / Person</div>
+        <div style="font-size:1.8rem;font-weight:800;color:#1a1a1a;">{repos_per_person}</div>
+        <div style="font-size:0.8rem;color:#666;margin-top:4px;">{total_repos} repos across {total_contributors} contributors</div>
+      </div>
+    </div>
   </div>
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
@@ -818,11 +833,6 @@ function switchLang(lang) {
     <div style="text-align:center;flex:1;min-width:140px;">
       <div style="font-size:2rem;font-weight:800;color:#fff;">{_fmt(net_change)}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
-    </div>
-    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
-    <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#2A72E5;">{_fmt(lines_per_person)}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines / Person</div>
     </div>
   </div>
 </div>
