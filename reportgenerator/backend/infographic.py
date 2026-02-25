@@ -516,7 +516,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
 
     stats_html = '''
     <div class="stats-bar">
-        <div class="stat"><span class="stat-num">{changes}</span><span class="stat-label">Lines Changed</span></div>
+        <div class="stat"><span class="stat-num">{changes}</span><span class="stat-label">Code Changes</span></div>
         <div class="stat"><span class="stat-num">{repos}</span><span class="stat-label">Active Projects</span></div>
         <div class="stat"><span class="stat-num">{cats}</span><span class="stat-label">Categories</span></div>
     </div>
@@ -542,7 +542,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
     '''
 
     categories_html = []
-    # Sort categories by total lines changed descending
+    # Sort categories by total code changes descending
     sorted_cats = []
     for cat_name, cat_info in CATEGORIES.items():
         repos = categorized_repos.get(cat_name, [])
@@ -553,7 +553,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
     sorted_cats.sort(key=lambda x: -x[3])
 
     for cat_name, cat_info, repos, _cat_total in sorted_cats:
-        # Sort repos within category by lines changed descending
+        # Sort repos within category by code changes descending
         repos = sorted(repos, key=lambda r: -(r.get("lines_changed", 0)))
 
         repo_cards = []
@@ -566,7 +566,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
                    class="repo-card" style="border-left:3px solid {cat_color};">
                     <div class="repo-top">
                         <span class="repo-name">{name_esc}</span>
-                        <span class="repo-lines-total" style="font-size:16px;font-weight:800;color:{cat_color};">{lines_total}</span>
+                        <span class="repo-lines-total" style="font-size:16px;font-weight:800;color:{cat_color};text-align:right;"><span style="display:block;font-size:9px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Code Changes</span>{lines_total}</span>
                     </div>
                     <div class="repo-desc">{desc}</div>
                     <div class="repo-bottom">
@@ -592,7 +592,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
                 <div class="category-header" style="border-left-color:{color};">
                     <span class="category-icon">{icon}</span>
                     <span class="category-title">{cat_name}</span>
-                    <span class="category-count">{count} projects · {lines} lines changed</span>
+                    <span class="category-count">{count} projects · {lines} code changes</span>
                 </div>
                 <div class="category-repos">
                     {cards}
@@ -633,7 +633,7 @@ def _build_blueprint_html(categorized_repos, repo_contributors, synergies_data):
             📊 Category Focus &amp; Potential Synergies
             <span class="section-badge badge-factual">Heuristic Analysis</span>
         </div>
-        <div class="section-subtitle">{total_repos} active projects · {total_changes} lines changed — Current focus and cross-category synergy opportunities</div>
+        <div class="section-subtitle">{total_repos} active projects · {total_changes} code changes — Current focus and cross-category synergy opportunities</div>
         <div style="margin-top:20px;">
             {focus_cards}
         </div>
@@ -688,7 +688,7 @@ def _build_category_focus_cards(categorized_repos):
         top_repo_strs = []
         for r in top_repos:
             r_lines = r.get("lines_changed", 0)
-            top_repo_strs.append("{name} ({lines} lines changed)".format(
+            top_repo_strs.append("{name} ({lines} code changes)".format(
                 name=r["name"], lines="{:,}".format(r_lines)
             ))
         top_list = ", ".join(top_repo_strs)
@@ -699,7 +699,7 @@ def _build_category_focus_cards(categorized_repos):
                 cat=cat_name, top=top_list
             )
         else:
-            focus_text = "{cat} has {count} active projects with {lines} lines changed. Key activity includes {top}.".format(
+            focus_text = "{cat} has {count} active projects with {lines} code changes. Key activity includes {top}.".format(
                 cat=cat_name, count=repo_count, lines="{:,}".format(cat_lines), top=top_list
             )
 
@@ -741,7 +741,7 @@ def _build_category_focus_cards(categorized_repos):
                 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
                     <span style="font-size:18px;">{icon}</span>
                     <span style="font-size:16px;font-weight:700;color:#1a1a1a;">{cat_name}</span>
-                    <span style="background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;margin-left:auto;">{count} projects · {lines} lines changed</span>
+                    <span style="background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;margin-left:auto;">{count} projects · {lines} code changes</span>
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">{chips}</div>
                 <div style="margin-bottom:8px;">

@@ -228,9 +228,9 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
 
         result["repos"].append(repo)
 
-    # Sort repos by total lines changed descending, keep "Other repos"/"Other projects" at end
+    # Sort repos by total code changes descending, keep "Other repos"/"Other projects" at end
     result["repos"].sort(key=lambda r: (r["name"].lower() in ("other repos", "other projects"), 0), reverse=False)
-    # Actually sort by lines changed desc — we need summary data which isn't available here,
+    # Actually sort by code changes desc — we need summary data which isn't available here,
     # so we'll sort later when we have summaries. Keep parse order for now.
 
     return result
@@ -436,8 +436,8 @@ def generate_html_report(
         </div>
         <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{_escape(overview)}</p>
         <div style="display:flex;gap:24px;justify-content:space-around;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{_fmt(lines_added)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Added</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{_fmt(lines_deleted)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Deleted</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{_fmt(lines_added)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Code Added</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{_fmt(lines_deleted)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Code Deleted</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{'+' if repo_net >= 0 else ''}{_fmt(repo_net)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Net Change</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Key Accomplishments</h4>
@@ -467,7 +467,7 @@ def generate_html_report(
             remaining_summary = exec_summary.replace(stripped, '', 1).strip()
             break
     if not headline_h3:
-        headline_h3 = f"{_fmt(total_commits)} Commits Drive {_fmt_short(total_changes)} Code Changes"
+        headline_h3 = f"{_fmt(total_changes)} Code Changes Across {total_repos} Active Projects"
 
     # ── Build infographic sections (Landscape + Blueprint) ──
     # Build repo_commits dict from summaries for classification
@@ -563,7 +563,7 @@ def generate_html_report(
                 remaining_summary_kr = exec_summary_kr.replace(stripped, '', 1).strip()
                 break
         if not headline_h3_kr:
-            headline_h3_kr = "{} 커밋으로 {} 코드 변경 달성".format(_fmt(total_commits), _fmt_short(total_changes))
+            headline_h3_kr = "{}개 프로젝트에서 {} 코드 변경".format(total_repos, _fmt(total_changes))
 
         # Build Korean repo cards from Korean parsed content
         repo_cards_html_kr = ""
@@ -611,8 +611,8 @@ def generate_html_report(
         </div>
         <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{overview}</p>
         <div style="display:flex;gap:24px;justify-content:space-around;padding:16px 0;border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{added}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">추가 라인</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{deleted}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">삭제 라인</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{added}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">코드 추가</div></div>
+            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{deleted}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">코드 삭제</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{net_sign}{net}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">순 변화</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">주요 성과</h4>
@@ -805,7 +805,7 @@ function switchLang(lang) {
   <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
     <div style="text-align:center;flex:1;min-width:140px;">
       <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt(total_changes)}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Code Changes</div>
     </div>
     <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
     <div style="text-align:center;flex:1;min-width:140px;">
