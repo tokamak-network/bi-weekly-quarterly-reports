@@ -730,7 +730,7 @@ def _build_category_focus_cards(categorized_repos):
 
         # Repo chips
         repo_chips = "".join(
-            '<span class="synergy-repo-chip">{name}<span class="commit-count">({lines} lines)</span></span>'.format(
+            '<span class="synergy-repo-chip">{name}<span class="commit-count">({lines} code lines)</span></span>'.format(
                 name=_escape_html(r["name"]), lines="{:,}".format(r.get("lines_changed", 0))
             )
             for r in top_repos
