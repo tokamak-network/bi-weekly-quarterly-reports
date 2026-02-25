@@ -739,11 +739,13 @@ function switchLang(lang) {
   .category-title{{flex:1;}}
   .category-count{{background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;}}
   .category-repos{{padding:10px;display:flex;flex-direction:column;gap:6px;}}
-  .repo-card{{display:block;padding:10px 12px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}}
+  .repo-card{{display:block;padding:12px 14px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}}
   .repo-card:hover{{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}}
-  .repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}}
+  .repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}}
   .repo-name{{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}}
   .repo-lines-total{{font-weight:700;font-size:13px;color:#1a1a1a;white-space:nowrap;margin-left:8px;}}
+  .repo-desc{{font-size:11px;color:#666;margin-bottom:6px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}}
+  .repo-card:hover .repo-desc{{-webkit-line-clamp:unset;overflow:visible;}}
   .repo-bottom{{display:flex;justify-content:space-between;align-items:baseline;}}
   .repo-contributors{{font-size:10px;color:#888;}}
   .repo-lines-detail{{font-size:10px;white-space:nowrap;}}

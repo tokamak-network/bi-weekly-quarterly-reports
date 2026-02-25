@@ -369,13 +369,14 @@ body{{
 .category-repos{{padding:10px;display:flex;flex-direction:column;gap:6px;}}
 
 .repo-card{{
-    display:block;padding:10px 12px;border-radius:6px;background:#f8f9fa;
+    display:block;padding:12px 14px;border-radius:6px;background:#f8f9fa;
     text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;
 }}
 .repo-card:hover{{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}}
-.repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}}
+.repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}}
 .repo-name{{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}}
 .repo-lines-total{{font-weight:700;font-size:13px;color:#1a1a1a;white-space:nowrap;margin-left:8px;}}
+.repo-desc{{font-size:11px;color:#666;margin-bottom:6px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}}
 .repo-bottom{{display:flex;justify-content:space-between;align-items:baseline;}}
 .repo-contributors{{font-size:10px;color:#888;}}
 .repo-lines-detail{{font-size:10px;white-space:nowrap;}}
@@ -561,6 +562,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
                         <span class="repo-name">{name_esc}</span>
                         <span class="repo-lines-total">{lines_total}</span>
                     </div>
+                    <div class="repo-desc">{desc}</div>
                     <div class="repo-bottom">
                         <span class="repo-contributors">{contribs}</span>
                         <span class="repo-lines-detail"><span class="repo-lines-added">+{added}</span> / <span class="repo-lines-deleted">-{deleted}</span></span>
@@ -571,6 +573,7 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
                 name=repo["name"],
                 cat_color=cat_info["color"],
                 name_esc=_escape_html(repo["name"]),
+                desc=_escape_html(repo.get("description", "")),
                 lines_total="{:,}".format(lines_changed),
                 contribs=contribs_text,
                 added="{:,}".format(lines_added),
