@@ -294,9 +294,9 @@ export default function Home() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   /* ---- Step 1: Generate ---- */
-  const [period, setPeriod] = useState('weekly')
-  const [startDate, setStartDate] = useState('2026. 02. 01.')
-  const [endDate, setEndDate] = useState('2026. 02. 10.')
+  const [period, setPeriod] = useState('biweekly')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
