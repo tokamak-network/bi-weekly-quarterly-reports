@@ -349,7 +349,7 @@ body{{
 
 .landscape-grid{{
     max-width:1400px;margin:0 auto;padding:28px 24px;
-    display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;
+    display:grid;grid-template-columns:repeat(2,1fr);gap:20px;
 }}
 
 .category-section{{
@@ -369,14 +369,18 @@ body{{
 .category-repos{{padding:10px;display:flex;flex-direction:column;gap:6px;}}
 
 .repo-card{{
-    display:block;padding:8px 10px;border-radius:6px;background:#f8f9fa;
+    display:block;padding:10px 12px;border-radius:6px;background:#f8f9fa;
     text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;
 }}
 .repo-card:hover{{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}}
-.repo-header{{display:flex;align-items:center;gap:7px;margin-bottom:3px;}}
-.activity-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
+.repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}}
 .repo-name{{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}}
-.repo-desc{{font-size:11px;color:#555;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}}
+.repo-lines-total{{font-weight:700;font-size:13px;color:#1a1a1a;white-space:nowrap;margin-left:8px;}}
+.repo-bottom{{display:flex;justify-content:space-between;align-items:baseline;}}
+.repo-contributors{{font-size:10px;color:#888;}}
+.repo-lines-detail{{font-size:10px;white-space:nowrap;}}
+.repo-lines-added{{color:#22c55e;font-weight:600;}}
+.repo-lines-deleted{{color:#ef4444;font-weight:600;}}
 .repo-card:hover .repo-desc{{-webkit-line-clamp:unset;overflow:visible;}}
 
 /* Blueprint */
@@ -544,28 +548,33 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
 
         repo_cards = []
         for repo in repos:
-            act_color, act_label = _activity_level(repo["commits"])
-            commit_text = "{0} commits".format(repo["commits"]) if repo["commits"] > 0 else "no recent activity"
+            lines_changed = repo.get("lines_changed", 0)
+            lines_added = repo.get("lines_added", 0)
+            lines_deleted = repo.get("lines_deleted", 0)
+            contributors = repo.get("contributors", [])
+            n_contribs = len(contributors) if isinstance(contributors, list) else 0
+            contribs_text = "{0} contributor{1}".format(n_contribs, "s" if n_contribs != 1 else "") if n_contribs > 0 else ""
             repo_cards.append('''
                 <a href="{url}/{name}" target="_blank" rel="noopener"
-                   class="repo-card" style="border-left:3px solid {cat_color};"
-                   title="{desc}&#10;&#10;{commit_text}">
-                    <div class="repo-header">
-                        <span class="activity-dot" style="background:{act_color};" title="{act_label} activity"></span>
+                   class="repo-card" style="border-left:3px solid {cat_color};">
+                    <div class="repo-top">
                         <span class="repo-name">{name_esc}</span>
+                        <span class="repo-lines-total">{lines_total}</span>
                     </div>
-                    <div class="repo-desc">{desc_esc}</div>
+                    <div class="repo-bottom">
+                        <span class="repo-contributors">{contribs}</span>
+                        <span class="repo-lines-detail"><span class="repo-lines-added">+{added}</span> / <span class="repo-lines-deleted">-{deleted}</span></span>
+                    </div>
                 </a>
             '''.format(
                 url=GITHUB_ORG_URL,
                 name=repo["name"],
                 cat_color=cat_info["color"],
-                desc=_escape_html(repo["description"]),
-                commit_text=commit_text,
-                act_color=act_color,
-                act_label=act_label,
                 name_esc=_escape_html(repo["name"]),
-                desc_esc=_escape_html(repo["description"]),
+                lines_total="{:,}".format(lines_changed),
+                contribs=contribs_text,
+                added="{:,}".format(lines_added),
+                deleted="{:,}".format(lines_deleted),
             ))
 
         repo_count = len(repos)

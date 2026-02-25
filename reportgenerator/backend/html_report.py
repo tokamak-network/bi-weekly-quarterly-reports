@@ -484,10 +484,23 @@ def generate_html_report(
     inf_total_changes = sum(infographic_repo_changes.get(r["name"], 0) for repos in infographic_categorized.values() for r in repos)
     inf_active_cats = sum(1 for repos in infographic_categorized.values() if repos)
 
-    # Inject lines_changed into each repo dict for landscape display
+    # Build per-repo lines_added / lines_deleted dicts
+    infographic_repo_added = {}  # type: Dict[str, int]
+    infographic_repo_deleted = {}  # type: Dict[str, int]
+    for rname, rsum in summaries.items():
+        if rname == "Other repos":
+            continue
+        if isinstance(rsum, dict):
+            infographic_repo_added[rname] = rsum.get("lines_added", 0)
+            infographic_repo_deleted[rname] = rsum.get("lines_deleted", 0)
+
+    # Inject lines_changed, lines_added, lines_deleted, contributors into each repo dict
     for cat_repos in infographic_categorized.values():
         for repo in cat_repos:
             repo["lines_changed"] = infographic_repo_changes.get(repo["name"], 0)
+            repo["lines_added"] = infographic_repo_added.get(repo["name"], 0)
+            repo["lines_deleted"] = infographic_repo_deleted.get(repo["name"], 0)
+            repo["contributors"] = infographic_repo_contributors.get(repo["name"], [])
 
     landscape_section_html = _build_landscape_html(
         infographic_categorized, inf_total_repos, inf_total_changes, inf_active_cats
@@ -718,7 +731,7 @@ function switchLang(lang) {
   .legend-item{{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#555;}}
   .legend-dot{{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}}
   .legend-label{{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;}}
-  .landscape-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;padding:20px 0;}}
+  .landscape-grid{{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;padding:20px 0;}}
   .category-section{{background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e8e8e8;box-shadow:0 1px 3px rgba(0,0,0,0.04);}}
   .category-section:hover{{border-color:#d0d0d0;}}
   .category-header{{display:flex;align-items:center;gap:10px;padding:14px 16px;font-weight:600;font-size:14px;color:#1a1a1a;background:#fff;border-left:4px solid #888;}}
@@ -726,13 +739,16 @@ function switchLang(lang) {
   .category-title{{flex:1;}}
   .category-count{{background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;}}
   .category-repos{{padding:10px;display:flex;flex-direction:column;gap:6px;}}
-  .repo-card{{display:block;padding:8px 10px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}}
+  .repo-card{{display:block;padding:10px 12px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}}
   .repo-card:hover{{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}}
-  .repo-header{{display:flex;align-items:center;gap:7px;margin-bottom:3px;}}
-  .activity-dot{{width:7px;height:7px;border-radius:50%;flex-shrink:0;}}
+  .repo-top{{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}}
   .repo-name{{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}}
-  .repo-desc{{font-size:11px;color:#555;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}}
-  .repo-card:hover .repo-desc{{-webkit-line-clamp:unset;overflow:visible;}}
+  .repo-lines-total{{font-weight:700;font-size:13px;color:#1a1a1a;white-space:nowrap;margin-left:8px;}}
+  .repo-bottom{{display:flex;justify-content:space-between;align-items:baseline;}}
+  .repo-contributors{{font-size:10px;color:#888;}}
+  .repo-lines-detail{{font-size:10px;white-space:nowrap;}}
+  .repo-lines-added{{color:#22c55e;font-weight:600;}}
+  .repo-lines-deleted{{color:#ef4444;font-weight:600;}}
   .blueprint-container{{padding:20px 0;}}
   .section-heading{{font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:4px;display:flex;align-items:center;gap:10px;}}
   .section-subtitle{{font-size:13px;color:#888;margin-bottom:20px;}}
