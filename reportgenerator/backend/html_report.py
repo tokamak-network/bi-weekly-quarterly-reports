@@ -228,8 +228,10 @@ def _parse_comprehensive_markdown(markdown: str) -> dict:
 
         result["repos"].append(repo)
 
-    # Sort repos alphabetically, keep "Other repos" at end
-    result["repos"].sort(key=lambda r: (r["name"].lower() == "other repos", r["name"].lower()))
+    # Sort repos by total lines changed descending, keep "Other repos"/"Other projects" at end
+    result["repos"].sort(key=lambda r: (r["name"].lower() in ("other repos", "other projects"), 0), reverse=False)
+    # Actually sort by lines changed desc — we need summary data which isn't available here,
+    # so we'll sort later when we have summaries. Keep parse order for now.
 
     return result
 
@@ -345,7 +347,10 @@ def generate_html_report(
 
     # Build repo cards HTML
     repo_cards_html = ""
-    sorted_repos = sorted(summaries.items(), key=lambda x: (x[0].lower() == "other repos", x[0].lower()))
+    sorted_repos = sorted(summaries.items(), key=lambda x: (
+        x[0].lower() in ("other repos", "other projects"),
+        -(x[1].get("lines_added", 0) + x[1].get("lines_deleted", 0))
+    ))
     
     for repo_name, summary in sorted_repos:
         if repo_name == "Other repos":
@@ -434,20 +439,18 @@ def generate_html_report(
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{_fmt(lines_added)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Added</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{_fmt(lines_deleted)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Deleted</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{'+' if repo_net >= 0 else ''}{_fmt(repo_net)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Net Change</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{repo_contributors}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Contributors</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Key Accomplishments</h4>
         <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accomplishments_html}</ul>
         {extra_sections}
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:0.85rem;">👤 <strong>Top Contributors:</strong> {contributors_html}</div>
     </div>'''
 
     # Executive summary - use parsed or fallback
     exec_summary = parsed["executive_summary"] or (
         f"In this reporting period, Tokamak Network's engineering teams deployed "
-        f"{_fmt(total_commits)} commits across {total_repos} active repositories, "
+        f"{_fmt(total_commits)} commits across {total_repos} active projects, "
         f"processing {_fmt_short(total_changes)} total code changes with a net growth of "
-        f"{_fmt_short(net_change)} lines. {total_contributors} contributors drove this development effort."
+        f"{_fmt_short(net_change)} lines."
     )
 
     # Extract headline from parsed
@@ -518,20 +521,6 @@ def generate_html_report(
     <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:12px;">Executive Summary</h2>
     <h3 style="font-size:1.8rem;font-weight:800;color:#1a1a1a;line-height:1.3;margin-bottom:20px;">{_escape(headline_h3)}</h3>
     <p style="font-size:1rem;color:#444;line-height:1.8;max-width:900px;">{_escape(remaining_summary)}</p>
-
-    <!-- PRODUCTIVITY METRICS -->
-    <div style="margin-top:28px;display:flex;gap:16px;flex-wrap:wrap;">
-      <div style="flex:1;min-width:200px;background:#F0F7FF;border-radius:10px;padding:20px 24px;border:1px solid #D4E5FF;">
-        <div style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Lines / Person</div>
-        <div style="font-size:1.8rem;font-weight:800;color:#1a1a1a;">{_fmt(lines_per_person)}</div>
-        <div style="font-size:0.8rem;color:#666;margin-top:4px;">{_fmt(total_changes)} lines across {total_contributors} contributors</div>
-      </div>
-      <div style="flex:1;min-width:200px;background:#F0FFF4;border-radius:10px;padding:20px 24px;border:1px solid #D4F5DC;">
-        <div style="font-size:0.7rem;font-weight:600;color:#16a34a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;">Repos / Person</div>
-        <div style="font-size:1.8rem;font-weight:800;color:#1a1a1a;">{repos_per_person}</div>
-        <div style="font-size:0.8rem;color:#666;margin-top:4px;">{total_repos} repos across {total_contributors} contributors</div>
-      </div>
-    </div>
   </div>
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
@@ -551,8 +540,8 @@ def generate_html_report(
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
 
-  <!-- REPO CARDS -->
-  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">Repository Breakdown</h2>
+  <!-- PROJECT CARDS -->
+  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">Project Breakdown</h2>
 
   {repo_cards_html}
 '''
@@ -625,7 +614,6 @@ def generate_html_report(
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{added}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">추가 라인</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{deleted}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">삭제 라인</div></div>
             <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{net_sign}{net}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">순 변화</div></div>
-            <div style="text-align:center;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{contribs}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">기여자</div></div>
         </div>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">주요 성과</h4>
         <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accs}</ul>
@@ -652,8 +640,8 @@ def generate_html_report(
 
   <div style="width:100%;height:1px;background:#e8e8e8;margin-bottom:48px;"></div>
 
-  <!-- REPO CARDS (KR) -->
-  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">저장소별 상세 보고</h2>
+  <!-- PROJECT CARDS (KR) -->
+  <h2 style="font-size:0.7rem;font-weight:600;color:#2A72E5;text-transform:uppercase;letter-spacing:3px;margin-bottom:24px;">프로젝트별 상세 보고</h2>
 
   {cards}
 '''.format(
@@ -815,16 +803,6 @@ function switchLang(lang) {
 <!-- STATS BAR -->
 <div style="background:#111827;padding:28px 40px;">
   <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-    <div style="text-align:center;flex:1;min-width:120px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;">{total_contributors}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Contributors</div>
-    </div>
-    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
-    <div style="text-align:center;flex:1;min-width:120px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;">{total_repos}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Repos</div>
-    </div>
-    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
     <div style="text-align:center;flex:1;min-width:140px;">
       <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt(total_changes)}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
@@ -833,6 +811,11 @@ function switchLang(lang) {
     <div style="text-align:center;flex:1;min-width:140px;">
       <div style="font-size:2rem;font-weight:800;color:#fff;">{_fmt(net_change)}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
+    </div>
+    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
+    <div style="text-align:center;flex:1;min-width:120px;">
+      <div style="font-size:2rem;font-weight:800;color:#fff;">{total_repos}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Projects</div>
     </div>
   </div>
 </div>
