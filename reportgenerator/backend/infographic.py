@@ -562,9 +562,8 @@ def _build_landscape_html(categorized_repos, total_repos, total_commits, active_
                         <span class="repo-name">{name_esc}</span>
                         <span class="repo-lines-total">{lines_total}</span>
                     </div>
-                    <div class="repo-desc">{desc}</div>
                     <div class="repo-bottom">
-                        <span class="repo-contributors">{contribs}</span>
+                        <span class="repo-desc">{desc}</span>
                         <span class="repo-lines-detail"><span class="repo-lines-added">+{added}</span> / <span class="repo-lines-deleted">-{deleted}</span></span>
                     </div>
                 </a>
