@@ -294,9 +294,9 @@ export default function Home() {
   const [step, setStep] = useState<1 | 2 | 3>(1)
 
   /* ---- Step 1: Generate ---- */
-  const [period, setPeriod] = useState('weekly')
-  const [startDate, setStartDate] = useState('2026. 02. 01.')
-  const [endDate, setEndDate] = useState('2026. 02. 10.')
+  const [period, setPeriod] = useState('biweekly')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [useAI, setUseAI] = useState(true)
   const [reportType, setReportType] = useState<'public' | 'technical'>('public')
   const [reportGrouping, setReportGrouping] = useState<'repository' | 'project'>('repository')
@@ -402,7 +402,7 @@ export default function Home() {
 
   // Fetch available models from server on mount
   useEffect(() => {
-    fetch('http://localhost:8010/api/health')
+    fetch('http://localhost:8030/api/health')
       .then(res => res.json())
       .then(data => {
         if (data.tokamak_models && data.tokamak_models.length > 0) {
@@ -578,7 +578,7 @@ export default function Home() {
       formData.append('report_number', reportNumber)
       formData.append('report_title', reportTitle)
 
-      const response = await fetch('http://localhost:8010/api/generate', {
+      const response = await fetch('http://localhost:8030/api/generate', {
         method: 'POST',
         body: formData,
       })
@@ -658,7 +658,7 @@ export default function Home() {
     try {
       const formData = new FormData()
       formData.append('file', csvFile)
-      const response = await fetch('http://localhost:8010/api/analyze', { method: 'POST', body: formData })
+      const response = await fetch('http://localhost:8030/api/analyze', { method: 'POST', body: formData })
       if (!response.ok) throw new Error('Failed to analyze CSV')
       const data = await response.json()
       const range = data.date_range || {}
@@ -692,7 +692,7 @@ export default function Home() {
     try {
       const formData = new FormData()
       formData.append('file', dropped)
-      const response = await fetch('http://localhost:8010/api/analyze', { method: 'POST', body: formData })
+      const response = await fetch('http://localhost:8030/api/analyze', { method: 'POST', body: formData })
       if (!response.ok) throw new Error('Failed to analyze CSV')
       const data = await response.json()
       console.log('[DEBUG] CSV analysis result:', data)
@@ -762,7 +762,7 @@ export default function Home() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 360000) // 6-minute timeout for large reports
 
-      const response = await fetch('http://localhost:8010/api/review', {
+      const response = await fetch('http://localhost:8030/api/review', {
         method: 'POST',
         body: formData,
         signal: controller.signal,
@@ -975,7 +975,7 @@ export default function Home() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 360000) // 6-minute timeout for slower models
 
-      const response = await fetch('http://localhost:8010/api/improve', {
+      const response = await fetch('http://localhost:8030/api/improve', {
         method: 'POST',
         body: formData,
         signal: controller.signal,
@@ -1008,7 +1008,7 @@ export default function Home() {
               reviewFormData.append('previous_summary', previousReview.review?.summary ?? '')
             }
 
-            const reviewResponse = await fetch('http://localhost:8010/api/review', { method: 'POST', body: reviewFormData })
+            const reviewResponse = await fetch('http://localhost:8030/api/review', { method: 'POST', body: reviewFormData })
             if (!reviewResponse.ok) return { level, score: null }
             const reviewData = await reviewResponse.json()
             return { level, score: reviewData.success ? reviewData.review.overall_score : null }
@@ -1060,7 +1060,7 @@ export default function Home() {
             formData.append('previous_summary', previousReview.review?.summary ?? '')
           }
 
-          const response = await fetch('http://localhost:8010/api/review', { method: 'POST', body: formData })
+          const response = await fetch('http://localhost:8030/api/review', { method: 'POST', body: formData })
           if (!response.ok) return { level, score: null }
           const data = await response.json()
           return { level, score: data.success ? data.review.overall_score : null }
@@ -1090,7 +1090,7 @@ export default function Home() {
       formData.append('file', file)
       formData.append('report_text', fullReport)
       formData.append('report_grouping', reportGrouping)
-      const response = await fetch('http://localhost:8010/api/verify', { method: 'POST', body: formData })
+      const response = await fetch('http://localhost:8030/api/verify', { method: 'POST', body: formData })
       if (!response.ok) throw new Error('Verify failed')
       const data = await response.json()
       if (data.success) {
@@ -1118,7 +1118,7 @@ export default function Home() {
       scriptFormData.append('report_text', reportText)
       scriptFormData.append('duration_minutes', '4')
 
-      const scriptResponse = await fetch('http://localhost:8010/api/generate-podcast-script', {
+      const scriptResponse = await fetch('http://localhost:8030/api/generate-podcast-script', {
         method: 'POST',
         body: scriptFormData,
       })
@@ -1138,7 +1138,7 @@ export default function Home() {
       const audioFormData = new FormData()
       audioFormData.append('script', scriptData.script)
 
-      const audioResponse = await fetch('http://localhost:8010/api/generate-podcast-audio', {
+      const audioResponse = await fetch('http://localhost:8030/api/generate-podcast-audio', {
         method: 'POST',
         body: audioFormData,
       })
