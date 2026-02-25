@@ -340,6 +340,7 @@ def generate_html_report(
     total_repos = stats.get("total_repos", len(summaries))
     total_contributors = stats.get("total_contributors", 0)
     net_change = stats.get("net_change", 0)
+    lines_per_person = total_changes // total_contributors if total_contributors > 0 else 0
 
     # Build repo cards HTML
     repo_cards_html = ""
@@ -799,24 +800,29 @@ function switchLang(lang) {
 <!-- STATS BAR -->
 <div style="background:#111827;padding:28px 40px;">
   <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-    <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt_short(total_changes)}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
+    <div style="text-align:center;flex:1;min-width:120px;">
+      <div style="font-size:2rem;font-weight:800;color:#fff;">{total_contributors}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Contributors</div>
     </div>
     <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
-    <div style="text-align:center;flex:1;min-width:140px;">
+    <div style="text-align:center;flex:1;min-width:120px;">
       <div style="font-size:2rem;font-weight:800;color:#fff;">{total_repos}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Repos</div>
     </div>
     <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
     <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#fff;">{total_contributors}</div>
-      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Contributors</div>
+      <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt(total_changes)}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
     </div>
     <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
     <div style="text-align:center;flex:1;min-width:140px;">
-      <div style="font-size:2rem;font-weight:800;color:#2A72E5;">{_fmt_short(net_change)}</div>
+      <div style="font-size:2rem;font-weight:800;color:#fff;">{_fmt(net_change)}</div>
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
+    </div>
+    <div style="width:1px;height:40px;background:rgba(255,255,255,0.1);"></div>
+    <div style="text-align:center;flex:1;min-width:140px;">
+      <div style="font-size:2rem;font-weight:800;color:#2A72E5;">{_fmt(lines_per_person)}</div>
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines / Person</div>
     </div>
   </div>
 </div>
