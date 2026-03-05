@@ -1439,63 +1439,8 @@ export default function Home() {
                     </div>
                     <p className="mt-2 text-[11px] text-gray-500">The selected model is used for report generation.</p>
                   </div>
-                  {/* Grouping */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
-                    <div>
-                      <div className="text-sm font-medium text-gray-800">Report grouping</div>
-                      <p className="mt-1 text-xs text-gray-500">Choose repository-based or project-based sections.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {(['repository', 'project'] as const).map((g) => (
-                        <button
-                          key={g}
-                          onClick={() => setReportGrouping(g)}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                            reportGrouping === g
-                              ? 'border-blue-600 bg-blue-50 text-blue-700'
-                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                          }`}
-                        >
-                          {g === 'repository' ? 'Repository' : 'Project'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* Report format */}
-                  {reportType === 'public' && (
-                    <div className="rounded-lg border border-gray-200 px-4 py-3">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-medium text-gray-800">Report format</div>
-                          <p className="mt-1 text-xs text-gray-500">Choose output structure for each section.</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {(['comprehensive', 'concise', 'structured'] as const).map((f) => (
-                            <button
-                              key={f}
-                              onClick={() => setReportFormat(f)}
-                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                                reportFormat === f
-                                  ? f === 'comprehensive'
-                                    ? 'border-violet-600 bg-violet-50 text-violet-700'
-                                    : 'border-blue-600 bg-blue-50 text-blue-700'
-                                  : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                              }`}
-                            >
-                              {f === 'comprehensive' ? 'Comprehensive' : f === 'concise' ? 'Concise' : 'Structured'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="mt-2 rounded-md bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
-                        {reportFormat === 'comprehensive'
-                          ? '📊 Full detailed report: ALL repositories included with statistics, goals, accomplishments, and GitHub links. Best for investors.'
-                          : reportFormat === 'concise'
-                          ? 'Format A: One-liner intro → 5 bullet points with bold titles. Compact and scannable.'
-                          : 'Format B: Title → Intro paragraph → "Key Accomplishments" header → 5 bullet points. More context and structure.'}
-                      </div>
-                    </div>
-                  )}
+                  {/* Grouping - fixed to repository */}
+                  {/* Report format - fixed to comprehensive */}
                   {/* Output format toggle (only for comprehensive + public) */}
                   {reportFormat === 'comprehensive' && reportType === 'public' && (
                     <div className="rounded-lg border border-gray-200 px-4 py-3">
@@ -2089,7 +2034,7 @@ export default function Home() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="grid gap-6">
           {/* Left: Expanded Report View */}
           <div className="space-y-4">
             {/* View toggle bar */}
@@ -2102,12 +2047,13 @@ export default function Home() {
                 </span>
                 <div className="flex items-center gap-1 ml-2">
                   {/* Visual mode for comprehensive reports */}
-                  {reportFormat === 'comprehensive' && Object.keys(reportSummaries).length > 0 && (
+                  {htmlReport && (
                     <button
                       onClick={() => { setViewMode('visual'); setEditingReport(false) }}
                       className={`rounded-lg px-3 py-1 text-xs font-medium transition ${viewMode === 'visual' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'text-gray-400 hover:text-gray-600'}`}
+                      title="HTML Preview"
                     >
-                      Visual
+                      HTML
                     </button>
                   )}
                   <button
@@ -2262,26 +2208,17 @@ export default function Home() {
             {/* Report content */}
             <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
               <div ref={reportContentRef} className="max-h-[calc(100vh-220px)] overflow-y-auto p-8">
-                {viewMode === 'visual' && Object.keys(reportSummaries).length > 0 && stats && dateRange ? (
-                  <VisualReport
-                    stats={{
-                      total_commits: stats.commits,
-                      total_prs: stats.prs,
-                      total_repos: stats.repos,
-                      total_lines_added: stats.linesAdded ?? 0,
-                      total_lines_deleted: stats.linesDeleted ?? 0,
-                      total_changes: stats.totalChanges ?? 0,
-                      net_change: stats.netChange ?? 0,
-                      total_contributors: stats.contributors ?? 0,
-                    }}
-                    dateRange={{
-                      start: dateRange.start ?? '',
-                      end: dateRange.end ?? '',
-                      days: dateRange.days ?? 0,
-                    }}
-                    summaries={reportSummaries}
-                    sections={sections}
+                {viewMode === 'visual' && htmlReport ? (
+                  <iframe
+                    srcDoc={htmlReport}
+                    className="w-full border-0 rounded-lg"
+                    style={{ height: 'calc(100vh - 280px)' }}
+                    title="Report Preview"
                   />
+                ) : viewMode === 'visual' && !htmlReport ? (
+                  <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+                    HTML report not available. Generate a report first.
+                  </div>
                 ) : editingReport ? (
                   <textarea
                     value={editableText}
@@ -2318,8 +2255,8 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right: Reviewer Panel */}
-          <div className="space-y-4">
+          {/* Right: Reviewer Panel (hidden - feature preserved) */}
+          <div className="space-y-4 hidden">
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
               <h3 className="text-sm font-semibold text-gray-900">Report Reviewers</h3>
               <p className="mt-1 text-[11px] text-gray-500">
@@ -2600,8 +2537,8 @@ export default function Home() {
               )}
             </div>
 
-            {/* Improve Section */}
-            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            {/* Improve Section (hidden - feature preserved) */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm hidden">
               <h3 className="text-sm font-semibold text-gray-900">AI Improvement</h3>
               <p className="mt-1 text-[11px] text-gray-500">
                 Select which reviewers&apos; feedback to apply, then improve the report.
@@ -2810,6 +2747,16 @@ export default function Home() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Proceed to Publish - visible outside hidden panels */}
+          <div className="mt-6">
+            <button
+              onClick={() => setStep(3)}
+              className="w-full rounded-full bg-gray-900 px-6 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-gray-800 hover:shadow-lg"
+            >
+              PROCEED TO PUBLISH →
+            </button>
           </div>
         </div>
       </main>
