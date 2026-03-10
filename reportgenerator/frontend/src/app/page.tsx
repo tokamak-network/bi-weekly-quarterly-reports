@@ -1563,16 +1563,26 @@ export default function Home() {
                 <div className="mt-5 h-[460px] overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-5">
                   {generated ? (
                     activeView === 'preview' ? (
-                      <div
-                        className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(
-                          reportLanguage === 'both' && langTab === 'kr' && fullReportKr
-                            ? fullReportKr
-                            : (reportLanguage === 'both' && langTab === 'en' && fullReportEn
-                              ? fullReportEn
-                              : (fullReport ?? rawMarkdown))
-                        ) }}
-                      />
+                      htmlReport ? (
+                        <iframe
+                          srcDoc={htmlReport}
+                          className="w-full h-full border-0 rounded-lg bg-white"
+                          title="Report Preview"
+                          sandbox="allow-same-origin"
+                          style={{ minHeight: '420px' }}
+                        />
+                      ) : (
+                        <div
+                          className="prose max-w-none whitespace-pre-wrap text-sm leading-7 text-gray-700 markdown-preview"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(
+                            reportLanguage === 'both' && langTab === 'kr' && fullReportKr
+                              ? fullReportKr
+                              : (reportLanguage === 'both' && langTab === 'en' && fullReportEn
+                                ? fullReportEn
+                                : (fullReport ?? rawMarkdown))
+                          ) }}
+                        />
+                      )
                     ) : (
                       <div className="h-full whitespace-pre-wrap rounded-lg bg-white p-4 font-mono text-xs text-gray-700">
                         {reportLanguage === 'both' && langTab === 'kr' && fullReportKr
