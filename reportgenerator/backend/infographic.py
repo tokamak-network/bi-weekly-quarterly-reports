@@ -259,6 +259,69 @@ def _escape_html(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;")
 
 
+def get_landscape_css():
+    # type: () -> str
+    """Return CSS needed for landscape/blueprint HTML fragments when embedded in another page."""
+    return """
+.stats-bar{display:flex;justify-content:center;gap:48px;padding:20px 24px;background:#fff;border-bottom:1px solid #e8e8e8;}
+.stat{display:flex;flex-direction:column;align-items:center;}
+.stat-num{font-size:26px;font-weight:700;color:#2A72E5;}
+.stat-label{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px;}
+.legend,.activity-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;padding:12px 24px;background:#fff;border-bottom:1px solid #f0f0f0;}
+.legend-item{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#555;}
+.legend-dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex-shrink:0;}
+.legend-label{font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;}
+.landscape-grid{max-width:1400px;margin:0 auto;padding:28px 24px;display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+.category-section{background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e8e8e8;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:border-color 0.2s;}
+.category-section:hover{border-color:#d0d0d0;}
+.category-header{display:flex;align-items:center;gap:10px;padding:14px 16px;font-weight:600;font-size:14px;color:#1a1a1a;background:#fff;border-left:4px solid #888;}
+.category-icon{font-size:16px;}
+.category-title{flex:1;}
+.category-count{background:#f0f0f0;color:#555;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;}
+.category-repos{padding:10px;display:flex;flex-direction:column;gap:6px;}
+.repo-card{display:block;padding:12px 14px;border-radius:6px;background:#f8f9fa;text-decoration:none;color:inherit;transition:all 0.15s;cursor:pointer;border:1px solid transparent;}
+.repo-card:hover{background:#f0f0f0;border-color:#e8e8e8;transform:translateX(2px);}
+.repo-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;}
+.repo-name{font-weight:600;font-size:12px;color:#1a1a1a;word-break:break-all;}
+.repo-lines-total{font-weight:700;font-size:13px;color:#1a1a1a;white-space:nowrap;margin-left:8px;}
+.repo-desc{font-size:11px;color:#666;margin-bottom:6px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;}
+.repo-bottom{display:flex;justify-content:space-between;align-items:baseline;}
+.repo-contributors{font-size:10px;color:#888;}
+.repo-lines-detail{font-size:10px;white-space:nowrap;}
+.repo-lines-added{color:#22c55e;font-weight:600;}
+.repo-lines-deleted{color:#ef4444;font-weight:600;}
+.repo-card:hover .repo-desc{-webkit-line-clamp:unset;overflow:visible;}
+.blueprint-container{max-width:1200px;margin:0 auto;padding:32px 24px;}
+.section-heading{font-size:20px;font-weight:700;color:#1a1a1a;margin-bottom:4px;display:flex;align-items:center;gap:10px;}
+.section-subtitle{font-size:13px;color:#888;margin-bottom:20px;}
+.section-badge{display:inline-block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:3px 10px;border-radius:4px;}
+.badge-factual{background:#EFF6FF;color:#2A72E5;}
+.badge-ai{background:#FFF7ED;color:#EA580C;}
+.activity-domain-group{margin-bottom:28px;}
+.activity-domain-title{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #e8e8e8;display:flex;align-items:center;gap:8px;}
+.activity-domain-commits{font-size:12px;font-weight:400;color:#888;}
+.activity-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.activity-card{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);transition:border-color 0.2s;}
+.activity-card:hover{border-color:#d0d0d0;}
+.activity-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.activity-card-name{font-weight:700;font-size:14px;color:#1a1a1a;}
+.activity-card-commits{background:#EFF6FF;color:#2A72E5;padding:2px 10px;border-radius:8px;font-size:12px;font-weight:700;}
+.activity-card-contributors{font-size:12px;color:#555;margin-bottom:4px;}
+.activity-card-desc{font-size:12px;color:#888;line-height:1.4;}
+.synergy-section{margin-top:40px;padding-top:32px;border-top:2px solid #e8e8e8;}
+.synergy-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px;margin-top:16px;}
+.synergy-card{background:#fff;border:1px solid #e8e8e8;border-radius:10px;padding:18px 20px;box-shadow:0 1px 3px rgba(0,0,0,0.04);border-left:4px solid #EA580C;}
+.synergy-card-title{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:8px;}
+.synergy-card-repos{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.synergy-repo-chip{background:#f0f0f0;padding:3px 10px;border-radius:6px;font-size:11px;color:#555;font-weight:600;}
+.synergy-repo-chip .commit-count{color:#2A72E5;font-weight:700;margin-left:4px;}
+.synergy-card-reason{font-size:13px;color:#555;line-height:1.5;}
+.synergy-card-label{display:inline-block;font-size:10px;font-weight:700;color:#EA580C;background:#FFF7ED;padding:2px 8px;border-radius:4px;margin-bottom:8px;}
+.synergy-card-basis{font-size:11px;color:#888;margin-top:8px;font-style:italic;}
+@media(max-width:768px){.landscape-grid{grid-template-columns:1fr;padding:16px;}.activity-cards{grid-template-columns:1fr;}.synergy-cards{grid-template-columns:1fr;}}
+"""
+
+
 def generate_infographic_html(
     categorized_repos,  # type: Dict[str, List[Dict[str, Any]]]
     title="Tokamak Network Ecosystem",  # type: str

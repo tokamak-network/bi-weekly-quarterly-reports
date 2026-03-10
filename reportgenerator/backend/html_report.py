@@ -18,6 +18,7 @@ from infographic import (
     _activity_level,
     _escape_html,
     _build_landscape_html,
+    get_landscape_css,
     _build_blueprint_html,
 )
 
@@ -45,25 +46,9 @@ def _load_logo_base64(filename: str) -> str:
 
 
 def _fmt(n: int) -> str:
-    """Format number with commas."""
-    return f"{n:,}"
-
-
-def _fmt_short(n: int) -> str:
-    """Format large numbers like 4.9M."""
-    abs_n = abs(n)
+    """Format number with commas — always full digits, no abbreviation."""
     sign = "+" if n > 0 else ("-" if n < 0 else "")
-    if abs_n >= 1_000_000:
-        val = abs_n / 1_000_000
-        if val == int(val):
-            return f"{sign}{int(val)}M"
-        return f"{sign}{val:.1f}M"
-    if abs_n >= 1_000:
-        val = abs_n / 1_000
-        if val == int(val):
-            return f"{sign}{int(val)}K"
-        return f"{sign}{val:.1f}K"
-    return f"{sign}{_fmt(abs_n)}"
+    return f"{sign}{abs(n):,}" if n != 0 else "0"
 
 
 def _parse_comprehensive_markdown(markdown: str) -> dict:
@@ -341,7 +326,7 @@ def generate_html_report(
 
     # Build repo cards HTML
     repo_cards_html = ""
-    sorted_repos = sorted(summaries.items(), key=lambda x: (x[0].lower() == "other repos", x[0].lower()))
+    sorted_repos = sorted(summaries.items(), key=lambda x: (x[0].lower() == "other repos", -(x[1].get("total_changes", x[1].get("lines_added", 0) + x[1].get("lines_deleted", 0)) if isinstance(x[1], dict) else 0)))
     
     for repo_name, summary in sorted_repos:
         if repo_name == "Other repos":
@@ -428,24 +413,21 @@ def generate_html_report(
         <p style="color:#555;font-size:0.9rem;line-height:1.6;margin-bottom:20px;">{_escape(overview)}</p>
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #f0f0f0;border-bottom:1px solid #f0f0f0;margin-bottom:16px;">
           <tr>
-            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">+{_fmt(lines_added)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Added</div></td>
-            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">-{_fmt(lines_deleted)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Lines Deleted</div></td>
-            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{'+' if repo_net >= 0 else ''}{_fmt(repo_net)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Net Change</div></td>
-            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{repo_contributors}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Contributors</div></td>
+            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#22863a;">+{abs(lines_added):,}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Code Added</div></td>
+            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#cb2431;">-{abs(lines_deleted):,}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Code Deleted</div></td>
+            <td style="text-align:center;padding:16px 8px;"><div style="font-size:1.1rem;font-weight:700;color:#1a1a1a;">{_fmt(repo_net)}</div><div style="font-size:0.75rem;color:#888;text-transform:uppercase;letter-spacing:0.5px;">Net Change</div></td>
           </tr>
         </table>
         <h4 style="font-size:0.9rem;font-weight:600;color:#1a1a1a;margin:16px 0 8px;">Key Accomplishments</h4>
         <ul style="padding-left:20px;color:#444;font-size:0.85rem;">{accomplishments_html}</ul>
         {extra_sections}
-        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #f0f0f0;font-size:0.85rem;">&#128100; <strong>Top Contributors:</strong> {contributors_html}</div>
     </div>'''
 
     # Executive summary - use parsed or fallback
     exec_summary = parsed["executive_summary"] or (
-        f"In this reporting period, Tokamak Network's engineering teams deployed "
-        f"{_fmt(total_commits)} commits across {total_repos} active repositories, "
-        f"processing {_fmt_short(total_changes)} total code changes with a net growth of "
-        f"{_fmt_short(net_change)} lines. {total_contributors} contributors drove this development effort."
+        f"In this reporting period, Tokamak Network's engineering teams processed "
+        f"{_fmt(total_changes)} total code changes across {total_repos} active projects with a net growth of "
+        f"{_fmt(net_change)} lines."
     )
 
     # Extract headline from parsed
@@ -462,7 +444,7 @@ def generate_html_report(
             remaining_summary = exec_summary.replace(stripped, '', 1).strip()
             break
     if not headline_h3:
-        headline_h3 = f"{_fmt(total_commits)} Commits Drive {_fmt_short(total_changes)} Code Changes"
+        headline_h3 = f"{_fmt(total_commits)} Commits Drive {_fmt(total_changes)} Code Changes"
 
     # ── Build infographic sections (Landscape + Blueprint) ──
     # Build repo_commits dict from summaries for classification
@@ -484,10 +466,15 @@ def generate_html_report(
     inf_total_changes = sum(infographic_repo_changes.get(r["name"], 0) for repos in infographic_categorized.values() for r in repos)
     inf_active_cats = sum(1 for repos in infographic_categorized.values() if repos)
 
-    # Inject lines_changed into each repo dict for landscape display
+    # Inject lines_changed, lines_added, lines_deleted into each repo dict for landscape display
     for cat_repos in infographic_categorized.values():
         for repo in cat_repos:
-            repo["lines_changed"] = infographic_repo_changes.get(repo["name"], 0)
+            rname = repo["name"]
+            repo["lines_changed"] = infographic_repo_changes.get(rname, 0)
+            rsum = summaries.get(rname, {})
+            if isinstance(rsum, dict):
+                repo["lines_added"] = rsum.get("lines_added", 0)
+                repo["lines_deleted"] = rsum.get("lines_deleted", 0)
 
     landscape_section_html = _build_landscape_html(
         infographic_categorized, inf_total_repos, inf_total_changes, inf_active_cats
@@ -545,7 +532,7 @@ def generate_html_report(
                 remaining_summary_kr = exec_summary_kr.replace(stripped, '', 1).strip()
                 break
         if not headline_h3_kr:
-            headline_h3_kr = "{} 커밋으로 {} 코드 변경 달성".format(_fmt(total_commits), _fmt_short(total_changes))
+            headline_h3_kr = "{} 커밋으로 {} 코드 변경 달성".format(_fmt(total_commits), _fmt(total_changes))
 
         # Build Korean repo cards from Korean parsed content
         repo_cards_html_kr = ""
@@ -710,6 +697,8 @@ function switchLang(lang) {
     body {{ background:#fff; margin: 15mm; }}
   }}
   {toggle_style}
+  /* Landscape & Blueprint CSS */
+  {get_landscape_css()}
 </style>
 </head>
 <body>
@@ -730,23 +719,18 @@ function switchLang(lang) {
   <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:1100px;margin:0 auto;">
     <tr>
       <td style="text-align:center;padding:8px 16px;">
-        <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt_short(total_changes)}</div>
-        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
+        <div style="font-size:2rem;font-weight:800;color:#fff;letter-spacing:-0.5px;">{_fmt(total_changes)}</div>
+        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Code Changes</div>
+      </td>
+      <td style="width:1px;background:#333333;" width="1"></td>
+      <td style="text-align:center;padding:8px 16px;">
+        <div style="font-size:2rem;font-weight:800;color:#2A72E5;">{_fmt(net_change)}</div>
+        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
       </td>
       <td style="width:1px;background:#333333;" width="1"></td>
       <td style="text-align:center;padding:8px 16px;">
         <div style="font-size:2rem;font-weight:800;color:#fff;">{total_repos}</div>
-        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Repos</div>
-      </td>
-      <td style="width:1px;background:#333333;" width="1"></td>
-      <td style="text-align:center;padding:8px 16px;">
-        <div style="font-size:2rem;font-weight:800;color:#fff;">{total_contributors}</div>
-        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Contributors</div>
-      </td>
-      <td style="width:1px;background:#333333;" width="1"></td>
-      <td style="text-align:center;padding:8px 16px;">
-        <div style="font-size:2rem;font-weight:800;color:#2A72E5;">{_fmt_short(net_change)}</div>
-        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
+        <div style="font-size:0.7rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Projects</div>
       </td>
     </tr>
   </table>
@@ -840,10 +824,9 @@ def generate_email_summary_html(
         exec_text = parsed.get("executive_summary", "")
     if not exec_text:
         exec_text = (
-            f"In this reporting period, Tokamak Network's engineering teams deployed "
-            f"{_fmt(total_commits)} commits across {total_repos} active repositories, "
-            f"processing {_fmt_short(total_changes)} total code changes with a net growth of "
-            f"{_fmt_short(net_change)} lines. {total_contributors} contributors drove this development effort."
+            f"In this reporting period, Tokamak Network's engineering teams processed "
+            f"{_fmt(total_changes)} total code changes across {total_repos} active projects with a net growth of "
+            f"{_fmt(net_change)} lines."
         )
 
     # ── Build the email HTML ──
@@ -877,23 +860,18 @@ def generate_email_summary_html(
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:700px;margin:0 auto;border-top:1px solid #333333;">
       <tr>
         <td style="text-align:center;padding:20px 8px;">
-          <div style="font-size:1.8rem;font-weight:800;color:#ffffff;">{_fmt_short(total_changes)}</div>
-          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Lines Changed</div>
+          <div style="font-size:1.8rem;font-weight:800;color:#ffffff;">{_fmt(total_changes)}</div>
+          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Code Changes</div>
+        </td>
+        <td style="width:1px;background:#333333;" width="1"></td>
+        <td style="text-align:center;padding:20px 8px;">
+          <div style="font-size:1.8rem;font-weight:800;color:#2A72E5;">{_fmt(net_change)}</div>
+          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
         </td>
         <td style="width:1px;background:#333333;" width="1"></td>
         <td style="text-align:center;padding:20px 8px;">
           <div style="font-size:1.8rem;font-weight:800;color:#ffffff;">{total_repos}</div>
-          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Repos</div>
-        </td>
-        <td style="width:1px;background:#333333;" width="1"></td>
-        <td style="text-align:center;padding:20px 8px;">
-          <div style="font-size:1.8rem;font-weight:800;color:#ffffff;">{total_contributors}</div>
-          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Contributors</div>
-        </td>
-        <td style="width:1px;background:#333333;" width="1"></td>
-        <td style="text-align:center;padding:20px 8px;">
-          <div style="font-size:1.8rem;font-weight:800;color:#2A72E5;">{_fmt_short(net_change)}</div>
-          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Net Growth</div>
+          <div style="font-size:0.65rem;color:#808080;text-transform:uppercase;letter-spacing:2px;margin-top:4px;">Active Projects</div>
         </td>
       </tr>
     </table>

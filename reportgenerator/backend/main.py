@@ -1,6 +1,12 @@
 """
 Biweekly Report Generator - FastAPI Backend
 """
+import sys
+from pathlib import Path as _Path
+# Ensure backend directory is on sys.path for sibling imports (html_report, infographic, etc.)
+_backend_dir = str(_Path(__file__).resolve().parent)
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -2149,28 +2155,28 @@ def generate_comprehensive_headline(all_summaries: dict, date_range: dict, model
 Period: {date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')}
 
 Statistics:
-- Active Repositories: {total_repos}
-- Total Commits: {fmt(total_commits)}
-- Contributors: {total_contributors}
+- Active Projects: {total_repos}
+- Code Changes: {fmt(total_changes)}
 - Lines Added: +{fmt(total_additions)}
 - Lines Deleted: -{fmt(total_deletions)}
 - Net Change: {'+' if net_change >= 0 else ''}{fmt(net_change)}
-- Total Code Changes: {fmt(total_changes)}
 
 Output ONLY the following (no preamble, no "Here is..." intro):
 1. A concise, factual headline summarizing the period's work (1 line, no emoji)
 2. A subheadline with one key insight (1 line)
 3. An executive summary paragraph (3-4 sentences) explaining what these numbers represent
 
-Tone guidelines:
-- Professional and factual, like an engineering progress update
-- Avoid promotional or hyperbolic language (no "massive", "explosive", "record-breaking", "surges")
-- Let the numbers speak for themselves
-- Focus on what was built and why it matters, not on selling excitement
+CRITICAL formatting rules:
+- ALWAYS display numbers with full digits and commas (e.g. 4,898,658) — NEVER abbreviate to M, K, or Million
+- Use "Code Changes" instead of "Lines Changed"
+- Use "Active Projects" instead of "Repositories"
+- Do NOT mention Contributors count or Commits count
+- Let the raw numbers create impact through their sheer size
 
-Example tone:
-"Tokamak Network: 4.9 Million Code Changes Across 73 Repositories"
-"Sustained development velocity with {total_contributors} contributors driving infrastructure and product improvements"
+Example headline format:
+"Tokamak Network: {fmt(total_changes)} Code Changes Across {total_repos} Projects"
+
+Tone: Professional and factual. Let the numbers speak for themselves.
 
 Do NOT include any meta text like "Here is the headline" or "Below is the summary". Output the content directly."""
 
@@ -2180,17 +2186,7 @@ Do NOT include any meta text like "Here is the headline" or "Below is the summar
 
 **{date_range.get('start', 'N/A')} - {date_range.get('end', 'N/A')}**
 
-## Executive Summary
-
-| Metric | Value |
-|--------|-------|
-| Active Repositories | {total_repos} |
-| Total Commits | {fmt(total_commits)} |
-| Contributors | {total_contributors} |
-| Lines Added | +{fmt(total_additions)} |
-| Lines Deleted | -{fmt(total_deletions)} |
-| Net Change | {'+' if net_change >= 0 else ''}{fmt(net_change)} |
-| Total Changes | {fmt(total_changes)} |
+Tokamak Network: {fmt(total_changes)} Code Changes Across {total_repos} Projects ({date_range.get('start', 'N/A')} to {date_range.get('end', 'N/A')})
 
 ---
 
@@ -3266,9 +3262,35 @@ async def generate_report(
             response_data["full_report_en"] = full_report_en
             response_data["full_report_kr"] = full_report_kr
 
+        # ============================================================
+        # POST-PROCESSING: Kevin's branding rules for headline/summary
+        # - "Repositories" → "Projects" in headline/title only
+        # - Per-repo tables keep full detail (Commits, Contributors,
+        #   Lines Added/Deleted, Net Change) — matches #2 format
+        # ============================================================
+        def _postprocess_headline(text: str) -> str:
+            if not text:
+                return text
+            import re
+            text = text.replace('Active Repositories', 'Active Projects')
+            text = text.replace('active repositories', 'active projects')
+            text = re.sub(r'(\d+) Repositories', r'\1 Projects', text)
+            text = re.sub(r'(\d+) repositories', r'\1 projects', text)
+            return text
+
+        # Apply only to headline/title/highlight (not section content)
+        for key in ['full_report', 'highlight', 'headline', 'title',
+                     'html_report', 'email_html',
+                     'full_report_en', 'full_report_kr',
+                     'highlight_en', 'highlight_kr']:
+            if key in response_data and isinstance(response_data[key], str):
+                response_data[key] = _postprocess_headline(response_data[key])
+
         return JSONResponse(response_data)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -4510,4 +4532,8 @@ async def generate_infographic(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8030)
+    args, _ = parser.parse_known_args()
+    uvicorn.run(app, host="0.0.0.0", port=args.port)
