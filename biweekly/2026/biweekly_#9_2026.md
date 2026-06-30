@@ -1,740 +1,639 @@
-# Tokamak Network — Biweekly Report #9
+# Tokamak Network Development Report
 
-**Bi-Weekly Engineering Update · May 16 — 31, 2026**
+**2026-06-01 - 2026-06-15**
 
+Tokamak Network: 505,233 Code Changes Across 16 Active Projects  
+Net growth of 412,831 lines reflects sustained delivery velocity with relatively low deletion volume  
+
+From 2026-06-01 to 2026-06-15, engineering activity spanned 16 Active Projects and produced 505,233 Code Changes. These changes included 459,032 lines added and 46,201 lines deleted, resulting in a net increase of 412,831 lines. The scale of additions indicates substantial expansion of code and capabilities during the period, while deletions suggest targeted refinement rather than broad removal. Overall, the numbers represent a high-volume development cycle with clear net codebase growth.
+
+---
+
+# all-thing-eye
+
+**GitHub**: [Link](https://github.com/tokamak-network/all-thing-eye)
+
+
+## Overview
+This repository appears to support operational workflows around member data handling and reporting, including export pipelines and email-based distribution. The work in this period focuses on adding an archival pathway for “retired members,” improving data export reliability, and introducing tooling for subscriber management and local development—all of which reduces operational risk around reporting and data lifecycle management.
+
+## Statistics
 | Metric | Value |
-| --- | --- |
-| Code Changes | 3,290,114 |
-| Active Projects | 26 |
-| Categories | 7 |
+|--------|-------|
+| Commits | 12 |
+| Contributors | 1 |
+| Lines Added | +4,475 |
+| Lines Deleted | -95 |
+| Net Change | +4,380 |
 
-## Executive Summary
 
-**Tokamak Network: 3,290,114 Code Changes Across 26 Active Projects (2026-05-16 to 2026-05-31)**
+## Period Goals
+This period concentrated on consolidating report distribution capabilities into all-thing-eye and establishing a structured approach for retired-member data archival. In parallel, the team aimed to make exports safer and more reversible (rollback/import scripts), while smoothing day-to-day operations through local-run tooling, UI for subscriber management, and targeted bug fixes.
 
-Net codebase reduction of -1,221,978 lines reflects large-scale removal and consolidation
-From 2026-05-16 to 2026-05-31, engineering work spanned 26 Active Projects and produced 3,290,114 Code Changes. The period included +1,034,068 lines added and -2,256,046 lines deleted, yielding a net change of -1,221,978. These numbers represent broad, high-volume modifications across the codebase, with deletions exceeding additions. The overall footprint reduction indicates significant cleanup, refactoring, or deprecation activity alongside targeted new development.
+## Key Accomplishments
+* **Implemented a dedicated retired-members archival scaffold using a separate-DB approach**: Added the structural groundwork to handle “retired members” as an archive domain rather than mixing with active member data, supporting cleaner data lifecycle separation and reducing the likelihood of operational mistakes during reporting or exports (commit: `checkpoint(archive): retired-members archive scaffold (separate-DB approach)`).
+* **Ported biweekly report email distribution into this repository**: Integrated report distribution logic directly into all-thing-eye, centralizing operational reporting and reducing reliance on external/manual processes for scheduled communications (commit: `feat(report-distribution): port biweekly report email distribution into all-thing-eye`).
+* **Delivered subscriber management capabilities, including a UI and stdin-based import**: Added mechanisms to manage report distribution recipients more maintainably, enabling updates via an interface and bulk ingestion via standard input for operational flexibility (commit: `feat(report-distribution): subscriber management UI + stdin import`).
+* **Added reversible retired-member import tooling with rollback scripts**: Introduced import paths for retired-member data with explicit rollback support, improving recoverability and lowering the risk of irreversible data changes during migrations or operational corrections (commit: `feat(unified-export): reversible retired-member import + rollback scripts`).
+* **Isolated archived data into a dedicated collection and updated exports accordingly**: Refactored “retired members” handling into an `archive_members` collection and adjusted custom export logic to read from `archive_members` and `member_artifacts`, improving data organization and simplifying export correctness (commits: `refactor(unified-export): retired members -> isolated archive_members collection`, `feat(unified-export): custom-export reads archive_members + member_artifacts`).
+* **Expanded export outputs with per-member tenure CSV and archive sourcing**: Added export capabilities that generate tenure-oriented CSVs per member and explicitly draw from archive sources in custom-export, improving traceability and enabling more granular downstream analysis (commit: `feat(export): per-member tenure-data CSV + archive source in custom-export`).
+* **Introduced member materials import into a dedicated artifacts store**: Routed member materials ingestion into `ati.member_artifacts`, separating artifacts from core member records and supporting more structured export and archival workflows (commit: `feat(unified-export): member materials import -> ati.member_artifacts`).
+* **Improved operability through local-run scripting, documentation, and targeted fixes**: Added a one-command local runner plus a dev-only auth bypass to speed up development iteration, documented local-dev Mongo/Drive “gotchas,” fixed a GraphQL crash when members have no email, and tightened git hooks to trigger backend rebuilds on relevant changes (commits: `chore(dev): add run-local.sh one-command runner + dev-only auth bypass`, `docs(skills): capture local-dev + mongo/drive gotchas as learned skills`, `fix(graphql): members query crashed on members with no email`, `fix(git-hooks): trigger backend rebuild on src/ and requirements.txt changes`).
 
-## Ecosystem Landscape
+## Code Analysis
+The +4,475 lines added largely reflect new functional surfaces rather than minor tweaks: a substantial portion is attributable to the retired-members archive scaffold and related “separate-DB” setup (`checkpoint(archive): retired-members archive scaffold...`), as well as porting biweekly report email distribution into this codebase (`feat(report-distribution): port biweekly report email distribution...`). Additional additions correspond to operational tooling and data pipeline work—rollback scripts for reversible imports (`feat(unified-export): reversible retired-member import + rollback scripts`), subscriber management UI and stdin import (`feat(report-distribution): subscriber management UI + stdin import`), and expanded export formats (tenure CSVs, archive sourcing) (`feat(export): per-member tenure-data CSV + archive source...`).
 
-### AI & Machine Learning — 1 projects · 1,702,014 code changes
+The -95 lines deleted suggest light refactoring and cleanup rather than removal of major functionality. This is consistent with reorganizing data handling by isolating retired members into an `archive_members` collection (net reshaping of data model usage) (`refactor(unified-export): retired members -> isolated archive_members collection`) and small, focused fixes (GraphQL query crash and git-hook tweak). Overall, the mix of large feature adds with modest refactors and stability fixes indicates a phase of capability build-out (archival + distribution + export) while beginning to enforce clearer separation of concerns in the data model and improving day-to-day operability.
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| Tokamak-AI-Layer | 1,702,014 | +273,316 | -1,428,698 | AI integration layer for Tokamak ecosystem |
+## Next Steps
+Next work should logically follow from the newly introduced archive and distribution components: continuing to harden the retired-member archival and export flows (especially around reversible operations) and iterating on report distribution management based on operational feedback. Further incremental stabilization is also implied by the targeted bug fixes and developer tooling added during this period.
 
-### Privacy & ZK — 4 projects · 717,396 code changes
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| Tokamak-zk-EVM-airdrop | 711,095 | +18,772 | -692,323 | Tokamak zk EVM airdrop component |
-| Tokamak-zk-EVM-contracts | 3,910 | +2,610 | -1,300 | On-chain contracts for ZK-EVM verification |
-| zk-X509 | 1,638 | +953 | -685 | zk X509 component |
-| zk-x509-ca-registry | 753 | +741 | -12 | zk x509 ca registry component |
+# bi-weekly-quarterly-reports
 
-### Platform & Services — 16 projects · 473,695 code changes
+**GitHub**: [Link](https://github.com/tokamak-network/bi-weekly-quarterly-reports)
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| fair-bounty | 205,895 | +204,146 | -1,749 | fair bounty component |
-| scatter-dex | 98,088 | +72,806 | -25,282 | scatter dex component |
-| tokamak-ai-access | 55,668 | +44,833 | -10,835 | tokamak ai access component |
-| rivai | 44,498 | +41,653 | -2,845 | rivai component |
-| llm-api-gateway | 34,467 | +17,439 | -17,028 | llm api gateway component |
-| trh-wiki | 16,931 | +15,947 | -984 | trh wiki component |
-| channel-workspace-mirror | 7,740 | +6,338 | -1,402 | channel workspace mirror component |
-| blockball | 4,092 | +3,778 | -314 | blockball component |
-| gunz-mac | 2,498 | +2,131 | -367 | gunz mac component |
-| thanos-bridge | 2,489 | +1,278 | -1,211 | Thanos L2 bridge implementation |
-| trh-backend | 527 | +457 | -70 | Rollup Hub backend infrastructure |
-| trh-platform-ui | 428 | +347 | -81 | Tokamak Rollup Hub dashboard UI |
-| trh-sdk | 261 | +216 | -45 | SDK for deploying custom L2 rollups |
-| crossTrade | 81 | +67 | -14 | crossTrade component |
-| tokamak-infra | 23 | +23 | -0 | tokamak infra component |
-| tokamak-rally | 9 | +8 | -1 | tokamak rally component |
 
-### Automation & Tooling — 1 project · 331,984 code changes
+## Overview
+This repository serves as a centralized record for Tokamak Network’s bi-weekly and quarterly reporting materials, providing a durable, versioned history of updates over time. For users and investors, maintaining reports in a Git-based repository improves traceability (what changed, when, and by whom) and supports consistent disclosure practices across reporting periods.
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| Tokagentos-monorepo | 331,984 | +303,748 | -28,236 | Tokagentos monorepo component |
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 1 |
+| Contributors | 1 |
+| Lines Added | +3,104 |
+| Lines Deleted | -0 |
+| Net Change | +3,104 |
 
-### DeFi & Staking — 1 projects · 56,754 code changes
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| tokamak-landing-page | 56,754 | +14,671 | -42,083 | Main Tokamak Network website |
+## Period Goals
+During this period, the primary objective appears to have been populating or expanding the repository’s contents by adding report-related files in a single upload. With no PRs recorded and a single bulk commit, the focus was on establishing or updating the reporting corpus rather than iterative revisions.
 
-### Data & Analytics — 1 projects · 7,074 code changes
+## Key Accomplishments
+* **Added a new set of repository files via upload**: Introduced a substantial body of new material in one commit (“Add files via upload”), increasing the repository’s tracked content by 3,104 lines and strengthening the completeness of the reporting archive for stakeholder review.
+* **Established a clean baseline for future reporting changes**: By adding content without deletions in this period (“Add files via upload”), the repository now has a clearer starting point for subsequent comparisons and version-to-version auditing as future bi-weekly/quarterly updates are committed.
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| match-explorer | 7,074 | +6,672 | -402 | match explorer component |
+## Code Analysis
+All recorded activity stems from a single commit (“Add files via upload”) that added 3,104 lines with no deletions. This pattern indicates the period’s work was centered on introducing new files rather than modifying, refactoring, or cleaning up existing content. From a maturity perspective, the absence of deletions and the presence of a single bulk addition suggest the repository is in a content accumulation phase (building out the reporting set) rather than an optimization or maintenance phase.
 
-### Core Infrastructure — 1 projects · 14 code changes
+## Next Steps
+Next work for this repository should focus on continuing to add new bi-weekly and quarterly reporting files as they are produced, ideally with more descriptive commit messages (and/or PRs) to make specific reporting-period changes easier to trace and review over time.
 
-| Repository | Code Changes | Added | Deleted | Description |
-| --- | --- | --- | --- | --- |
-| tokamak-thanos-stack | 14 | +10 | -4 | tokamak thanos stack component |
 
-## Category Focus & Potential Synergies
+# fair-bounty
 
-*26 active projects · 1,001 code changes — Current focus and cross-category synergy opportunities*
+**GitHub**: [Link](https://github.com/tokamak-network/fair-bounty)
 
-### AI & Machine Learning — 1 projects · 1,702,014 code changes
 
-Repos: Tokamak-AI-Layer (1,702,014 code lines)
+## Overview
+fair-bounty appears to implement a report-driven bug bounty workflow for Tokamak Network programs, including submission review, status management, and automated on-chain payout handling. During this period, the repository evolved from an initial architectural draft into an integrated system with an AI-assisted auditor component, administrative reporting tools, and production-oriented security and validation fixes. This work matters to users and stakeholders because it directly impacts how efficiently and safely security reports can be processed and how reliably bounty funds can be escrowed and paid.
 
-**Current Focus:** AI & Machine Learning has 1 active project: Tokamak-AI-Layer (1,702,014 code changes). Development is focused and concentrated.
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 48 |
+| Contributors | 1 |
+| Lines Added | +295,378 |
+| Lines Deleted | -10,234 |
+| Net Change | +285,144 |
 
-**Potential Synergies:**
 
-- AI-powered automation tools could assist with code review, smart contract auditing, and developer onboarding workflows.
-- Combining AI capabilities with analytics infrastructure could enable predictive insights on ecosystem health and development velocity.
+## Period Goals
+The main goals for this period were to establish an initial end-to-end architecture for a bounty/report platform, implement an AI-assisted auditing flow with robust report status handling, and connect reporting outcomes to on-chain payment execution. In parallel, the work focused on operational readiness: adding comprehensive automated tests, improving deployment/tooling (including Docker sandboxing), migrating target execution to Sepolia with fallback options, and addressing security and validation risks identified during implementation.
 
-### Privacy & ZK — 4 projects · 717,396 code changes
+## Key Accomplishments
+* **Delivered an initial system architecture baseline**: Launched an architectural draft to define the project’s first cohesive structure, enabling subsequent feature work to land on a consistent foundation (“Launched the first architectural draft”).
+* **Implemented an AI auditor agent with report status management**: Added an AI auditor component and explicit report status management to support automated/assisted review workflows and clearer tracking of report lifecycle (“feat: add AI auditor agent, report status management, and OpenZeppelin contracts”; “feat: AI auditor on-chain review & auto-pay, synced backend cache layer”).
+* **Introduced report-based bounty payment flows with on-chain automation**: Built a report-centric payment mechanism that can preserve ACCEPT reasons and trigger automatic payments on-chain, tightening the linkage between review outcomes and payouts (“feat: report-based bounty payment, preserve ACCEPT reason, auto-pay on chain”; “feat: AI auditor on-chain review & auto-pay, synced backend cache layer”).
+* **Strengthened payment reliability and user-facing validation**: Added payment retry handling and hardened validation while also improving user experience elements tied to transaction feedback and warnings (“feat: payment retry, improved UX, and validation hardening”; “refactor(frontend): auto-dismiss tx hash toast and simplify withdrawal warning”).
+* **Added administrative reporting UI for operational oversight**: Implemented an admin “All Reports” view with statistics, filters, and expandable detail panels to improve triage, auditing, and operational transparency for program managers (“feat: admin All Reports tab with stats, filters, and expandable detail panels”).
+* **Integrated wallet-based authentication and deposit verification**: Added wallet signature authentication and on-chain deposit verification to support stronger identity/authorization controls and ensure deposits are verified against chain state (“feat: add wallet signature authentication and on-chain deposit verification”).
+* **Expanded quality assurance with a comprehensive backend test suite**: Added a substantial automated test suite (120 tests) to reduce regression risk and improve confidence in core backend logic as features expanded (“test: add comprehensive backend test suite (120 tests)”).
+* **Addressed production security risks and correctness gaps**: Patched multiple security/correctness issues including a false-ACCEPT parsing risk, a SQL duplicate detection gap related to vulnerability type handling, and additional critical vulnerabilities identified as blockers for production readiness (“fix: patch parseVerdict false-ACCEPT risk and SQL duplicate detection vulnType gap”; “fix: patch 3 critical security vulnerabilities for production”).
 
-Repos: Tokamak-zk-EVM-airdrop (711,095 code lines), Tokamak-zk-EVM-contracts (3,910 code lines), zk-X509 (1,638 code lines)
+## Code Analysis
+The very large net increase (+285,144) is consistent with building substantial new functionality and scaffolding in a relatively short window. The biggest additions are tied to: (1) establishing the initial codebase structure (“Launched the first architectural draft”), (2) implementing AI auditor capabilities and report status management (“feat: add AI auditor agent, report status management…”; “feat: AI auditor on-chain review & auto-pay…”), and (3) adding on-chain payment logic and associated contracts (“…and OpenZeppelin contracts”; “report-based bounty payment…auto-pay on chain”). Significant added surface area also comes from operational tooling and testing, including a Docker sandbox for forge commands and Foundry tests (“feat: add Docker sandbox for forge commands and ProgramManager Foundry tests”) and a comprehensive backend test suite (“120 tests”).
 
-**Current Focus:** Privacy & ZK has 4 active projects with 717,396 code changes. Key activity includes Tokamak-zk-EVM-airdrop (711,095 code changes), Tokamak-zk-EVM-contracts (3,910 code changes), zk-X509 (1,638 code changes).
+The deletions (-10,234) align with iterative hardening and maintainability work rather than feature removal. Refactors modularized the auditor into clearer separations (interfaces, implementation, pipeline, pure functions), which typically reduces coupling and makes auditing logic easier to test and modify (“refactor: modularize auditor…”). Additional cleanup included simplifying report filenames to UUID-only and hiding them from the frontend (“refactor: simplify report filename to UUID only…”), narrowing language/localization choices (“refactor: localize auditor to English…”), and repository hygiene through `.gitignore` updates that exclude database files and dependency directories (“chore: update .gitignore…”). Collectively, this blend of rapid feature build-out, focused refactoring, and targeted security patches indicates the project is moving from an initial architecture into an implementation phase where correctness, operational safety, and maintainability are increasingly prioritized (as evidenced by multiple security fixes and the addition of extensive automated tests).
 
-### Platform & Services — 16 projects · 473,695 code changes
+## Next Steps
+Next work should continue reducing operational and security risk by extending test coverage and validation around report verdict parsing, duplicate detection, and payment execution paths, building on the fixes already made (“fix: patch parseVerdict…”, “fix: patch 3 critical security vulnerabilities…”). Ongoing iteration is also implied around chain-environment readiness (Sepolia with Anvil fallback) and the AI auditor pipeline as the system is exercised under real program workflows (“feat: migrate target network…to Sepolia with Anvil fallback”; “refactor: modularize auditor…”).
 
-Repos: fair-bounty (205,895 code lines), scatter-dex (98,088 code lines), tokamak-ai-access (55,668 code lines)
 
-**Current Focus:** Platform & Services has 16 active projects with 473,695 code changes. Key activity includes fair-bounty (205,895 code changes), scatter-dex (98,088 code changes), tokamak-ai-access (55,668 code changes).
+# gunz-ue
 
-**Potential Synergies:**
+**GitHub**: [Link](https://github.com/tokamak-network/gunz-ue)
 
-- Embedding staking functionality into the Rollup Hub platform would let L2 operators offer native staking to their users out of the box.
-- Deeper integration between Thanos rollup stack and the Rollup Hub platform could streamline L2 deployment pipelines and operational tooling.
 
-### Automation & Tooling — 1 project · 331,984 code changes
+## Overview
+gunz-ue is an Unreal Engine–based project focused on rebuilding core GunZ-style gameplay systems (movement, combat, animation, maps, UI, and networking) with supporting asset and tooling pipelines. For Tokamak Network stakeholders, this repository reflects tangible progress toward a playable prototype and a repeatable content pipeline—both prerequisites for reliable production execution and external testing.
 
-Repos: Tokagentos-monorepo (331,984 code lines)
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 87 |
+| Contributors | 2 |
+| Lines Added | +27,486 |
+| Lines Deleted | -10,443 |
+| Net Change | +17,043 |
 
-**Current Focus:** Automation & Tooling has 1 active project: Tokagentos-monorepo (331,984 code changes). Development is focused and concentrated.
 
-**Potential Synergies:**
+## Period Goals
+During this period, the work concentrated on establishing end-to-end foundations for a GunZ-like Unreal project: character/animation pipelines, a first-pass K-style movement component, initial combat state handling, early UI structure, and a minimum viable multiplayer duel flow. In parallel, the team added verification and import scripts plus documentation and a regression harness to stabilize “handfeel” and support repeatable iteration.
 
-- AI-powered automation tools could assist with code review, smart contract auditing, and developer onboarding workflows.
+## Key Accomplishments
+* **Implemented a K-style movement component**: Added directional speed handling along with tumble, wall-run, and wall-jump behaviors to support the project’s core mobility loop and enable early playtesting of movement “handfeel” (commit: *feat(movement): K-style movement component — directional speed/tumble/wall-run/wall-jump*).
+* **Built a character gameplay foundation for an OGZ character**: Introduced input handling, animation integration, a combat FSM, weapon swapping, and a demo mode to make the character controllable and showcaseable in-engine (commit: *feat(character): OGZ character — input, animation, combat FSM, weapon swap, demo mode*).
+* **Established a Mixamo character mesh pipeline**: Added a pipeline for bringing Mixamo character meshes into the project, supporting faster iteration on rigs/characters and reducing friction in content setup (commit: *feat(character): Mixamo character mesh pipeline*).
+* **Validated and refined IK retargeting for GunZ-style weapon grips**: Performed a UE5 retargeting validation spike and then implemented “exact GunZ weapon grips on Manny,” directly targeting animation authenticity and consistent weapon-hand alignment (commits: *feat(retarget): Mannequin spike — GunZ→UE5 IK retargeting validated*; *feat(retarget): exact GunZ weapon grips on Manny*).
+* **Adjusted animation behavior back toward GunZ reference**: Reverted sword idle/run/dash behavior to align with GunZ expectations and introduced AnimInstance crossfading, improving motion continuity and helping reduce animation “drift” during rapid state changes (commit: *refactor(anim): revert sword idle/run/dash to GunZ; crossfade AnimInstance*).
+* **Added a Phase 0 “handfeel” regression harness with golden trace**: Implemented a test harness that records/compares a golden trace, enabling repeatable checks for movement/combat feel changes and reducing the risk of untracked gameplay regressions (commit: *test(handfeel): add Phase 0 regression harness with golden trace*).
+* **Delivered an initial listen-server duel replication MVP**: Implemented a first multiplayer replication milestone (“stage 4”) for a listen-server duel, establishing a baseline for networked play and future iteration on synchronization and gameplay rules (commit: *feat(net): listen-server duel — replication MVP (stage 4)*).
+* **Created early frontend structure and UI system**: Added a main menu and lobby skeleton and introduced a “Blur” design system for menu/lobby UI, laying the groundwork for a navigable experience flow beyond in-editor testing (commits: *feat(frontend): main menu and lobby skeleton*; *feat(frontend): Blur design system for menu/lobby*).
+* **Replaced debug visuals with procedural billboard combat effects**: Introduced VFX to replace debug drawing, improving readability for playtests and making combat interactions easier to evaluate without developer overlays (commit: *feat(vfx): procedural billboard combat effects replace debug draws*).
+* **Expanded playable/editor map coverage and defaults**: Added the Charles Bridge map as the editor default and introduced the Monserrate pilgrimage map, increasing environment variety for testing traversal, combat, and camera/visibility behavior (commits: *feat(map): add Charles Bridge map as editor default*; *feat(maps): add Monserrate pilgrimage map*).
+* **Implemented an initial synthesized audio set and import pipeline**: Added a v0 sound set and an import pipeline, enabling consistent audio asset ingestion and supporting faster iteration on feedback cues (commit: *feat(sound): synthesized v0 sound set and import pipeline*).
+* **Added asset diagnostics, verification, and import automation**: Delivered scripts for FBX/skeleton/mesh diagnostics and a FBX→UAsset import pipeline plus demo launcher tooling, improving repeatability and reducing manual content setup errors (commits: *chore(scripts): FBX/skeleton/mesh diagnostic and verification scripts*; *chore(scripts): FBX->UAsset import pipeline and demo launcher*).
+* **Attempted and then rolled back an Unreal Editor plugin integration**: Added an “MCPUnreal editor plugin” and subsequently reverted it, indicating active evaluation of tooling while keeping the mainline stable when the integration was not ready (commits: *feat(tooling): add MCPUnreal editor plugin*; *revert(tooling): remove MCPUnreal editor plugin*).
 
-### DeFi & Staking — 1 projects · 56,754 code changes
+## Code Analysis
+The +27,486 lines added largely reflect new gameplay and production-capability surface area: a dedicated K-style movement component (directional speed/tumble/wall-run/wall-jump), substantial character gameplay scaffolding (input, animation, combat FSM, weapon swap, demo mode), initial UI flows (menu/lobby skeleton plus a design system), and a first networked duel replication MVP. Significant additions also include content and pipeline support—new maps, a synthesized audio set with import pipeline, and multiple automation/diagnostic scripts for FBX/skeleton/mesh verification and FBX→UAsset imports—indicating an emphasis on repeatable asset ingestion rather than one-off manual setup.
 
-Repos: tokamak-landing-page (56,754 code lines)
+The -10,443 lines deleted are consistent with active iteration and stabilization rather than simple accumulation. The clearest example is the add-and-revert cycle of the MCPUnreal editor plugin (added ~9.7k lines, then removed ~9.7k), which suggests the team tested an integration path and chose to revert to maintain stability. Additional deletions align with refinement work such as animation adjustments and crossfading changes (*refactor(anim): revert sword idle/run/dash to GunZ; crossfade AnimInstance*) and incremental updates in retargeting and UI design system work, reflecting ongoing tuning toward a desired reference feel.
 
-**Current Focus:** DeFi & Staking has 1 active project: tokamak-landing-page (56,754 code changes). Development is focused and concentrated.
+Overall, the net +17,043 lines indicates the repository is in an expansion phase: building core systems (movement, character, network, UI) while simultaneously introducing tooling, tests, and documentation (K-style spec, wall behavior audit, Phase 0 handfeel spec and migration plan) that typically support more disciplined iteration as complexity grows.
 
-**Potential Synergies:**
+## Next Steps
+Near-term work implied by the current foundations includes iterating beyond the existing “skeleton”/“MVP” implementations—expanding the menu/lobby flow, advancing the listen-server duel replication beyond the current stage, and continuing to use the Phase 0 regression harness and “handfeel” specifications to guide controlled gameplay tuning.
 
-- Embedding staking functionality into the Rollup Hub platform would let L2 operators offer native staking to their users out of the box.
 
-### Data & Analytics — 1 projects · 7,074 code changes
+# hr-automation-process
 
-Repos: match-explorer (7,074 code lines)
+**GitHub**: [Link](https://github.com/tokamak-network/hr-automation-process)
 
-**Current Focus:** Data & Analytics has 1 active project: match-explorer (7,074 code changes). Development is focused and concentrated.
 
-**Potential Synergies:**
+## Overview
+This repository supports internal HR and finance automation processes, covering workflows such as expense settlement, payroll administration, tax deadline tracking, and candidate evaluation utilities. For Tokamak Network, these capabilities matter because they reduce operational overhead, improve auditability of approvals and payouts, and standardize time-sensitive compliance activities (e.g., tax calendars) that affect organizational execution.
 
-- Combining AI capabilities with analytics infrastructure could enable predictive insights on ecosystem health and development velocity.
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 10 |
+| Contributors | 1 |
+| Lines Added | +2,924 |
+| Lines Deleted | -493 |
+| Net Change | +2,431 |
 
-### Core Infrastructure — 1 projects · 14 code changes
 
-Repos: tokamak-thanos-stack (14 code lines)
+## Period Goals
+During this period, the primary focus was to implement persistent, system-integrated expense settlement workflows, including database/API support, approval screens, and automated scheduling. In parallel, the repository expanded adjacent HR operations tooling—tax deadline management with calendar integration, payroll bulk operations, and candidate benchmark evaluation—while tightening security posture around Supabase access.
 
-**Current Focus:** Core Infrastructure has 1 active project: tokamak-thanos-stack (14 code changes). Development is focused and concentrated.
+## Key Accomplishments
+* **Implemented persistent expense settlement end-to-end**: Added expense settlement persistence across database and API layers, built an approval UI, and introduced scheduler support to automate parts of the settlement workflow (commit: “feat: 경비 정산 영속화 (§0-§5) — DB/API/승인화면/스케줄러”).
+* **Integrated expense settlement with Supabase and approval-to-settlement linkage**: Connected settlement data flows to Supabase, implemented mapping between approval and settlement records, and introduced USDT unit handling to standardize settlement denomination where applicable (commit: “feat: 경비 정산 Supabase 통합 (A-2) — 승인→정산 연계, 매핑, USDT 단위”).
+* **Expanded payroll administration tooling**: Implemented bulk payroll deletion and recalculation capabilities to support corrective operations and faster iteration when payroll inputs change (commit: “feat: 급여 벌크 삭제/재계산, Candidates 벤치마크 비교 평가, 발표 자료”).
+* **Added candidate benchmark comparison evaluation and quality-metric fixes**: Introduced benchmark comparison evaluation for candidates and subsequently corrected issues by switching benchmark comparison categories to a “quality density” basis and fixing quality metric save/load bugs while increasing AI timeout thresholds (commits: “feat: … Candidates 벤치마크 비교 평가…”, “fix: 벤치마크 비교 카테고리를 품질 밀도 기반으로 교체”, “fix: 벤치마크 품질 메트릭 저장/로드 버그 + AI 타임아웃 증가”).
+* **Delivered a tax calendar feature with Google Calendar integration**: Implemented management of Singapore tax deadlines and integrated with Google Calendar to improve visibility and reduce missed compliance dates (commit: “feat: Tax Calendar — 싱가포르 세금 마감일 관리 + Google Calendar 연동”).
+* **Standardized exchange-rate sourcing for expense decisions**: Unified the exchange rate source to the ECB API and removed reliance on ECOS USD/KRW, improving consistency in FX-dependent expense decisioning (commit: “fix: 경비 결정 환율을 ECB API로 통일 (ECOS USD/KRW 제거)”).
+* **Hardened Supabase security configuration**: Removed hardcoded Supabase keys and enabled Row Level Security (RLS) across all tables, reducing exposure risk and aligning data access with least-privilege principles (commit: “security: Supabase 키 하드코딩 제거 + RLS 전테이블 활성화”).
+* **Maintained stakeholder documentation and presentation assets**: Updated presentation materials to include benchmark comparison evaluation content, adjusted dates, and standardized styling for consistency (commits: “docs: 발표 자료에 벤치마크 비교 평가 내용 추가”, “docs: 발표 자료 날짜 6/10으로 변경 + 배경색 5/20 스타일 통일”).
 
-**Potential Synergies:**
+## Code Analysis
+The net increase of **+2,431 lines** reflects substantial feature delivery rather than small incremental changes, driven primarily by the expense settlement persistence work that explicitly spans **DB/API/approval UI/scheduler** components and represents the single largest addition in the period (commit: “경비 정산 영속화…”). Additional material code growth came from Supabase integration for settlement flows (approval→settlement linkage, mapping, and USDT unit handling) and the tax calendar implementation with Google Calendar integration, each indicating expansion of operational tooling into connected services (commits: “경비 정산 Supabase 통합…”, “Tax Calendar…”).
 
-- Deeper integration between Thanos rollup stack and the Rollup Hub platform could streamline L2 deployment pipelines and operational tooling.
+The **-493 lines deleted** aligns with targeted cleanup and standardization: removal of ECOS USD/KRW usage when consolidating FX sourcing to the ECB API and refactoring/security remediation associated with eliminating hardcoded Supabase keys (commits: “경비 결정 환율… 제거”, “Supabase 키 하드코딩 제거…”). The presence of multiple “fix” commits—addressing benchmark evaluation categorization, quality metric persistence, and timeout configuration—suggests the repository is moving from initial feature rollout into stabilization and correctness hardening, particularly for evaluation workflows and integrated services.
 
-## Repository Breakdown
+## Next Steps
+Continue iterating on the newly implemented expense settlement and payroll operational flows by refining integration points (Supabase, scheduling) and addressing follow-on fixes as usage surfaces edge cases. Maintain security and compliance alignment by extending the current Supabase hardening approach (RLS-enabled tables, non-hardcoded secrets) as new tables and features are added.
 
-### Tokamak-AI-Layer  ·  [GitHub](https://github.com/tokamak-network/Tokamak-AI-Layer)
 
-Tokamak-AI-Layer is a development repository focused on agent/billing infrastructure and related application support within the Tokamak ecosystem, including deployment targets and gateway behavior for AI-related services. During this period, work centered on separating a large subproject into its own repository while continuing to iterate on billing gateway functionality, deployment automation, and compatibility fixes.
+# rivai
 
-**+273,316** added · **-1,428,698** deleted · **-1,155,382** net change
+**GitHub**: [Link](https://github.com/tokamak-network/rivai)
 
-**Key Accomplishments**
 
-- Migrated a major subproject out of the repository
-- Hardened infrastructure packaging and static-import completeness
-- Expanded deployment options for the billing server
-- Improved build determinism for containerized hosting
-- Iterated on billing gateway architecture with controlled rollback
-- Upgraded billing UI and user flows
-- Strengthened billing configuration and hosted-gateway defaults
+## Overview
+rivai is a game-focused codebase that, in this period, evolved into a monorepo incorporating platform-specific work (notably macOS) alongside core gameplay, content, and launcher functionality. The repository matters to stakeholders because it covers the end-to-end player experience—launcher access, authentication handoff, gameplay systems, and stability fixes—which collectively determine usability, testability, and readiness for broader distribution.
 
-**Code Analysis**
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 13 |
+| Contributors | 1 |
+| Lines Added | +20,892 |
+| Lines Deleted | -247 |
+| Net Change | +20,645 |
 
-The net reduction of -1,155,382 lines is primarily explained by the repository restructure: a single commit migrated tokagentos/ into a separate repository, accounting for the vast majority of deletions (chore: migrate tokagentos/ to its own repo (Tokagentos-monorepo) (+0/-1403043)). The +273,316 lines added reflect continued active development despite the extraction, notably: (1) infrastructure changes to ensure all statically imported apps are included (fix(infra): track 8 untracked apps the agent statically imports (+204384/-13)), (2) deployment configurations for Railway and Fly (feat(infra): deploy tokagent-billing-server to Railway, feat(infra): tokagent-billing-server Fly deployment), and (3) iterative billing gateway capabilities and UX improvements (e.g., hosted-gateway defaults, mode toggles, UI rebuilds, and chat proxying/streaming features).
 
-The commits also show ongoing refactoring discipline and risk control: the team shipped a significant billing architecture change and then explicitly reverted it, indicating that architectural direction is being validated with the ability to roll back quickly (feat(billing): v2.0.0 thin-client refactor — gateway owns Neon and its revert). Multiple “fix(boot)” commits addressing plugin-sql version/interface skew further suggest the codebase is being stabilized for consistent startup behavior as dependencies evolve (fix(boot): patch walls 4 & 5 of plugin-sql version skew, fix(boot): tokagentos boot vs @elizaos/plugin-sql@1.7.2 interface skew).
+## Period Goals
+The primary goal for this period appears to have been consolidating previously separate project work into a unified monorepo while expanding player-facing functionality across authentication, launcher UX, and content. In parallel, the team iterated on gameplay systems (combat authority separation), added new maps/character assets/animations, and addressed stability and test coverage (audio GC crash prevention and network verification tests).
 
-**Next Steps**
+## Key Accomplishments
+* **Consolidated macOS project work into the main monorepo**: Absorbed the standalone “gunz-mac” project into the repository, reducing fragmentation and simplifying cross-platform development and release management (*feat(gunz-mac): absorb standalone gunz-mac project into monorepo*).
+* **Implemented account and login capabilities**: Added an account API and launcher login flow, establishing a foundation for controlled access, user sessions, and integration with the launcher experience (*feat(auth): account API and launcher login*).
+* **Enabled initial launcher-to-game authentication handoff**: Passed a development launch ticket to the game via the `OGZ_AUTH_TOKEN` environment variable (“stage 0”), which supports early end-to-end validation of authenticated launches (*feat(launcher): pass dev launch ticket to game via OGZ_AUTH_TOKEN env (stage 0)*).
+* **Improved launcher UI and branding behaviors**: Added frameless, “LoL-style” window controls and updated launcher visuals (yellow accent, brand logo, hero video) tied to version 0.0.9, improving usability and presenting a more cohesive entry point for users (*feat(launcher): frameless LoL-style window controls*; *feat(launcher): yellow accent, brand logo, new hero video (0.0.9)*).
+* **Expanded playable content with new character and map assets**: Added a “cybernetic combat suit” mesh and introduced a Dotonbori map with a procedural builder, increasing available content for gameplay testing and demonstrations (*feat(character): cybernetic combat suit mesh*; *feat(maps): Dotonbori map with procedural builder*).
+* **Advanced movement/combat feel via animation work—and iterated on transition approach**: Added outsourced sword dash animations with pose-aligned playback and attempted “seamless idle<->dash transitions,” then reverted that specific transition approach, indicating active tuning for responsiveness and visual continuity (*feat(anim): outsourced sword dash animations with pose-aligned playback*; *fix(anim): seamless idle<->dash transitions via windup catch-up*; *Revert "fix(anim): seamless idle<->dash transitions via windup catch-up"*).
+* **Refined combat architecture for clearer authority boundaries**: Split “shot authority” from cosmetic handling, which supports more maintainable combat code and can reduce ambiguity between gameplay-critical decisions and presentation (*refactor(combat): split shot authority from cosmetics*).
+* **Improved reliability through targeted test and crash fixes**: Added a network test for rotating-screenshot duel verification and fixed an audio crash by marking `SoundMap` as `UPROPERTY` to prevent garbage-collection use-after-free, reducing runtime instability during play and test sessions (*test(net): -OGZNetShot rotating-screenshot duel verification*; *fix(audio): mark SoundMap UPROPERTY to prevent GC use-after-free crash*).
 
-After the tokagentos/ extraction, the immediate focus is likely to be continued stabilization of post-migration builds and deployments (as reflected by build-lock tracking and multi-platform deploy work) and further iteration on the billing gateway’s v2 behavior (as indicated by the refactor-and-revert cycle and ongoing billing feature commits).
+## Code Analysis
+The +20,892 lines added are dominated by repository consolidation and feature expansion. The largest single change—absorbing the standalone “gunz-mac” project into the monorepo (+17,657)—suggests substantial code and/or build/system integration work landed in one step (*feat(gunz-mac): absorb standalone gunz-mac project into monorepo*). Additional sizable additions align with building product surface area: authentication/account API and launcher login (+1,102) (*feat(auth): account API and launcher login*), new character content (+873) (*feat(character): cybernetic combat suit mesh*), new animations (+494) (*feat(anim): outsourced sword dash animations with pose-aligned playback*), and a new map with a procedural builder (+358) (*feat(maps): Dotonbori map with procedural builder*).
 
-### Tokamak-zk-EVM-airdrop  ·  [GitHub](https://github.com/tokamak-network/Tokamak-zk-EVM-airdrop)
+The -247 lines deleted are consistent with iterative engineering rather than broad cleanup. Notably, a combat refactor removed and reorganized code while adding new structure (+140/-50), indicating an effort to separate core gameplay authority from cosmetics for clearer responsibilities (*refactor(combat): split shot authority from cosmetics*). The animation transition change was introduced and then reverted (+97/-16 followed by +16/-97), signaling rapid experimentation and rollback when a specific approach did not meet requirements, which is typical during feel/performance tuning (*fix(anim)...* and its *Revert*). Small, surgical fixes and tests (audio GC prevention, network verification test) indicate attention to stability and validation as feature work progresses (*fix(audio)...*; *test(net)...*).
 
-This repository contains the implementation work for a zkEVM-related airdrop application and its supporting components, including transaction-based reward resolution, verification, and public status/eligibility surfaces. It matters to users because it determines how eligibility and rewards are computed and exposed, and to investors because it represents operational readiness work (verification, abuse controls, deployment packaging, and audit documentation) for a public-facing distribution process.
+Overall, the net change (+20,645) indicates a period primarily focused on bringing significant code into a single repository and extending user-critical pathways (launcher, login, authenticated launch), with early signs of maturing discipline through targeted refactors, tests, and crash fixes.
 
-**+18,772** added · **-692,323** deleted · **-673,551** net change
+## Next Steps
+Continue building out the authenticated launcher-to-game flow beyond the current “stage 0” ticket handoff and further stabilize gameplay feel, particularly around dash/idle transition behavior that was recently experimented with and reverted. Ongoing work is also likely to deepen content and systems added this period (map tooling, character assets, combat separation) while expanding validation through additional tests and runtime stability fixes.
 
-**Key Accomplishments**
 
-- Implemented a minimal public airdrop application
-- Packaged verifier artifacts for production deployment
-- Added a local airdrop worker and refined its operating plan
-- Introduced verifier contract audit tooling and documented results
-- Strengthened verifier correctness through stricter automated testing
-- Expanded eligibility and public status visibility features
-- Hardened defenses against abusive submissions
+# scatter-dex
 
-**Code Analysis**
+**GitHub**: [Link](https://github.com/tokamak-network/scatter-dex)
 
-The period shows a relatively small amount of net new code (+18,772) alongside extremely large removals (-692,323), driven primarily by the commit “Implement minimal public airdrop app (+2560/-690269)”. Based on the commit messages, the added code corresponds to concrete operational capabilities: deployable verifier packaging (“Bundle verifier artifacts for Vercel”), worker execution (“Implement local airdrop worker”), expanded verification and assurance (“Add strict verifier tests”, “Add verifier contract audit script”, “Document verifier audit results”), and user-facing transparency features (“Add status eligibility checker”, “Add paginated public status table”).  
 
-The large deletion footprint is consistent with a deliberate consolidation and cleanup toward a “minimal” public airdrop application, indicating removal of prior implementation mass in favor of a tighter, more maintainable surface area. In parallel, multiple commits focused on correctness and operational resilience (abuse controls, hardened transfer verification, retry logic, and broader tests), which is characteristic of a project moving from feature assembly toward deployment-readiness and controlled execution.
+## Overview
+scatter-dex is a codebase supporting Scatter’s decentralized exchange and associated operator/admin tooling, including an orderbook backend, relayer/operator registry workflows, and a user-facing SDK used by related applications. During this period, the repository advanced multi-network readiness, strengthened operator/KYC and certificate authority flows, and improved reliability of note/claim UX—areas that directly affect operational integrity, compliance workflows, and end-user transaction outcomes.
 
-**Next Steps**
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 331 |
+| Contributors | 1 |
+| Lines Added | +31,847 |
+| Lines Deleted | -14,608 |
+| Net Change | +17,239 |
 
-Complete the implementation tasks implied by the documented public airdrop plan and continue tightening verification, auditing, and test coverage as the minimal public app and worker flow are exercised in deployment environments (e.g., Vercel and Postgres-backed setups). Further iterations are also expected around operational monitoring and robustness, building on the newly added analytics and retry mechanisms.
 
-### Tokagentos-monorepo  ·  [GitHub](https://github.com/tokamak-network/Tokagentos-monorepo)
+## Period Goals
+Work in this period focused on shipping operational primitives required for a production-grade exchange environment: operator onboarding (KYC + certificates), admin controls for treasury/revenue handling, and backend indexers/endpoints needed for observability and settlement history. In parallel, the team aimed to reduce duplication across admin/operator surfaces and improve SDK/client reliability for note synchronization and gasless claim flows (as reflected in multiple bug-fix PRs).
 
-Tokagentos-monorepo consolidates TokagentOS, its billing/gateway components, frontend experiences, scaffolding templates, and supporting infrastructure in a single codebase. During this period, work focused on deployability (notably Railway), billing and gateway iteration, and product/UI updates that affect how users discover, provision, and pay for agent capabilities.
+## Key Accomplishments
+* **Implemented operator leaf-certificate issuance end-to-end**: Added backend support for issuing operator leaf certificates with CSR intake and signing records (*feat(orderbook): operator leaf-cert issuance backend (CSR + signing record)*), provided an operator self-service UI for certificate issuance (*feat(operators): self-service operator certificate issuance screen*), and enabled admin-side CSR signing with authoritative subject gating (*feat(admin): CA signs operator CSR → leaf cert with authoritative subject gate*), establishing a clearer operational control path for operator identity credentials.
+* **Structured certificate authority hierarchy and tightened CA configuration**: Introduced “Root CA under Operator CA” as part of KYC review workflows (*feat(admin): KYC review + Root CA under Operator CA (PR2-B)*) and removed a self-issued certificate line from operator CA configuration (*refactor(operator-ca): remove self-issued cert line; identity = zk-X509 + KYC*), reducing ambiguity in issuance paths and aligning CA handling with intended identity requirements.
+* **Delivered initial KYC onboarding backend for relayer operators**: Added Stage 1 backend support for relayer operator KYC onboarding (*feat(orderbook): add relayer operator KYC onboarding backend (Stage 1)*), extending administrative and compliance-related workflows needed to onboard and manage market infrastructure participants.
+* **Added SIWE-based authentication for admin/KYC endpoints and centralized shared auth logic**: Implemented SIWE wallet-signature authentication to protect admin/KYC endpoints (*feat(orderbook): SIWE wallet-signature auth for admin/KYC endpoints*) and refactored shared SIWE admin-auth core into a shared package (*refactor(auth): hoist shared SIWE admin-auth core into @scatter-dex/types*), improving consistency across services and reducing duplicated authentication logic.
+* **Expanded orderbook transparency via commitment history indexing and API access**: Implemented a commitment-history indexer and exposed it through a dedicated API endpoint (*feat(orderbook): commitment-history indexer + GET /api/commitments*), enabling programmatic access to operational history that supports monitoring, debugging, and audits.
+* **Advanced admin treasury and token control features**: Added treasury revenue split, treasury withdrawals, and a token whitelist list in the admin surface (*feat(admin): treasury revenue split + Treasury withdraw + token whitelist list*), improving operational control over funds movement and approved assets.
+* **Shifted token metadata and address resolution to on-chain sources**: Updated frontend SDK behavior to source token lists from an on-chain whitelist (*feat(sdk/frontend): source token list from on-chain whitelist*) and aligned pay/pro flows to resolve token addresses and decimals from the same on-chain whitelist (*feat(pay,pro): resolve token addresses+decimals from on-chain whitelist*), reducing reliance on static/off-chain token configuration.
+* **Strengthened SDK execution model using wallet-node reads/writes with Multicall batching**: Enabled SDK reads and writes to run on the user’s wallet node and batch via Multicall3 (*feat(sdk): run reads & writes on the user's wallet node, batched via Multicall3*), improving request efficiency and consolidating on-chain operations into fewer calls where applicable.
+* **Improved multi-network readiness and deployment governance**: Added backend multi-network (chainId) support (*feat(orderbook): multi-network (chainId) support — backend*), parameterized launch scripts for Sepolia team setup (*feat(scripts): network-parameterized launch scripts for Sepolia team setup*), and updated deployment architecture to use a single shared ProxyAdmin plus a full deployment ledger (*feat(deploy): single shared ProxyAdmin for all proxies + full deployment ledger*), increasing repeatability and traceability of deployments across environments.
+* **Made relayer registry configuration more flexible**: Introduced an admin-configurable, global, switchable bond token in the relayer registry (*feat(relayer-registry): admin-configurable bond token (global, switchable)*), enabling operational changes to collateral/bond parameters without code duplication across networks.
+* **Reduced repository bloat and removed duplicated UI surfaces**: Deleted operator “platform-admin” pages duplicated by the admin app (*chore(operators): remove platform-admin pages duplicated by the admin app*), simplifying maintenance and minimizing the risk of divergent behaviors across two admin interfaces.
+* **Improved reliability of note synchronization and gasless claim UX across apps**: Landed multiple fixes affecting note reconciliation and claim handling, including bounding a self-heal poll to prevent infinite polling (*PR#1023*), self-healing pending notes by polling tree refresh until reconciled (*PR#1017*), and addressing false timeout failures and nullifier backstops on gasless claim surfaces (*PR#1019, PR#1021*), improving end-user consistency for claims and reducing support/debug overhead.
 
-**+303,748** added · **-28,236** deleted · **+275,512** net change
+## Code Analysis
+The +31,847 / -14,608 change profile reflects substantial feature delivery alongside targeted cleanup and consolidation. Major additions correspond to new operational and administrative capabilities: certificate issuance workflows (operator CSR handling, signing records, self-service issuance UI, and admin signing with subject gating) (*feat(orderbook): operator leaf-cert issuance backend (CSR + signing record)*; *feat(operators): self-service operator certificate issuance screen*; *feat(admin): CA signs operator CSR → leaf cert with authoritative subject gate*), treasury controls and token whitelist management (*feat(admin): treasury revenue split + Treasury withdraw + token whitelist list*), commitment history indexing and an API endpoint (*feat(orderbook): commitment-history indexer + GET /api/commitments*), and multi-network backend support plus deployment/launch improvements (*feat(orderbook): multi-network (chainId) support — backend*; *feat(deploy): single shared ProxyAdmin for all proxies + full deployment ledger*; *feat(scripts): network-parameterized launch scripts for Sepolia team setup*).
 
-**Key Accomplishments**
+Significant deletions indicate deliberate reduction of duplication and tighter configuration: removal of duplicated “platform-admin” pages (*chore(operators): remove platform-admin pages duplicated by the admin app*) and cleanup of operator CA configuration (*refactor(operator-ca): remove self-issued cert line; identity = zk-X509 + KYC*). Large-scale documentation changes (*docs(circuit-split): rewrite design.md to match the shipped Half-proof implementation*) suggest alignment of written design with shipped behavior, which is typical as systems stabilize. Separately, moving canonical prover zkeys distribution to a GCS manifest rather than Git (*feat(zk-assets): distribute canonical prover zkeys via GCS manifest, not git*) indicates the codebase is shedding large binary artifacts and shifting toward more maintainable release/asset distribution practices.
 
-- Brought previously untracked application code under version control
-- Enabled Railway deployment for billing server
-- Stabilized billing architecture by reverting a major refactor
-- Advanced TokagentOS pipeline and web-search capabilities
-- Improved build determinism for container/hosted environments
-- Iterated on billing dashboard and core UI components
-- Aligned scaffolding templates with canonical billing implementation
+Overall, the pattern—new admin/operator infrastructure, security/auth consolidation, multi-network/deployment rigor, and reliability bug-fixes through PRs—suggests the repository is transitioning from feature build-out toward operational hardening and maintainability, with deliberate removal of redundant surfaces and clearer ownership of critical workflows (auth, CA, treasury, and on-chain configuration sources).
 
-**Code Analysis**
+## Next Steps
+Continue iterating on operator onboarding and KYC workflows beyond the current “Stage 1” backend work (*feat(orderbook): add relayer operator KYC onboarding backend (Stage 1)*) and further harden client reliability paths around note reconciliation and gasless claim handling as surfaced by the recent fix PRs (PR#1017–PR#1023).
 
-The +303,748 lines added are primarily consistent with two themes shown in commit titles: (1) substantial repository expansion by tracking previously untracked applications that the agent statically imports (fix(infra): track 8 untracked apps the agent statically imports), and (2) rapid iteration across billing, gateway, TokagentOS versions, and frontend surfaces (multiple feat(billing), feat(tokagentos@...), and feat(frontend) commits). The relatively smaller -28,236 lines deleted includes meaningful reversals and pruning, notably the revert of a major billing refactor (Revert "feat(billing): v2.0.0 thin-client refactor — gateway owns Neon"), as well as targeted removals such as eliminating a chat terminal feature from scaffolded apps (feat(tokagentos@2.0.60): remove chat terminal feature from scaffolded apps).
 
-Overall, this change profile indicates a repository in active build-out and integration: large additions to ensure all required apps and templates are tracked, coupled with deployment-focused changes (Railway deployment and lockfile tracking) that reduce operational variance (feat(infra): deploy tokagent-billing-server to Railway; chore(infra): track tokagentos/bun.lock for Docker/Railway builds). The presence of a large revert suggests active architectural experimentation with a willingness to roll back when needed, which is consistent with iterative hardening of the billing/gateway stack during mainnet-facing polish (feat(billing): mainnet rollout polish + pricing refresh).
+# Tokagentos-monorepo
 
-**Next Steps**
+**GitHub**: [Link](https://github.com/tokamak-network/Tokagentos-monorepo)
 
-Continue hardening the hosted billing/gateway path on Railway and related build reproducibility work (as reflected by the Railway deployment and lockfile tracking commits), while iterating further on billing UX and x402-related dashboard/outbound flows (as reflected by the recurring billing and x402 feature commits).
 
-### fair-bounty  ·  [GitHub](https://github.com/tokamak-network/fair-bounty)
+## Overview
+Tokagentos-monorepo is a monorepo that aggregates Tokagentos application packages and operator-facing tooling, including an “operator console” and billing-related surfaces. During this period, work concentrated on making on-chain credit/billing flows and gateway pages functional against live data, while improving multi-chain support and stabilizing builds—areas that directly affect user onboarding, payment reliability, and operational visibility.
 
-fair-bounty appears to be a smart contract and frontend codebase for a bug bounty–style workflow, including on-chain components for gating/onboarding, report handling, and bounty pool mechanics. The repository matters to Tokamak Network stakeholders because it directly supports a structured security reporting and reward process, combining contract-enforced rules (e.g., acceptance, minting, refunds/unbonding) with user-facing interfaces for participation and administration.
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 57 |
+| Contributors | 1 |
+| Lines Added | +38,209 |
+| Lines Deleted | -8,290 |
+| Net Change | +29,919 |
 
-**+204,146** added · **-1,749** deleted · **+202,397** net change
 
-**Key Accomplishments**
+## Period Goals
+The primary objective was to deliver a redesigned operator console centered on “x402” billing/credits functionality, with self-contained, inline on-chain flows (top-up, bridging, swapping) and reliable live-data wiring across gateway pages. A second goal was to extend billing to be chain-aware and multi-chain (including specific bridge routes) while ensuring the monorepo builds cleanly and documentation is easier for new contributors.
 
-- Published an initial architecture baseline
-- Integrated the frontend into the main repository structure
-- Refactored core contract logic and built testing infrastructure
-- Implemented onboarding gate MVP across contracts and UI
-- Connected gating to bounty issuance flows
-- Strengthened anti-spam and termination mechanisms
-- Corrected accounting and timing edge cases in claims and pools
+## Key Accomplishments
+* **Implemented inline, self-contained x402 on-chain flows**: Added on-chain sequences for “get-PTON, bridge, swap” as part of the operator x402 experience, enabling a more direct path from credits UI to actual on-chain actions (**feat(operator): x402 on-chain flows — get-PTON, bridge, swap (inline, self-contained)**).
+* **Ported the redesigned operator console into scaffolded applications**: Moved the x402 redesign and operator console into scaffolded apps to standardize delivery and reduce duplication across app targets (**feat(scaffold): port operator console (x402 redesign) into scaffolded apps**).
+* **Restructured the x402 tab into a real-data billing surface**: Reworked the x402 UI to be inline and tied to real billing data rather than a separate/isolated surface, improving accuracy and reducing context switching for operators (**feat(operator): restructure x402 tab into inline real-data billing surface**).
+* **Added a consolidated operator console spanning credits and network visibility**: Introduced an operator console that covers x402 credits and “A2A network” visibility, expanding the administrative surface area for monitoring and management (**feat(app-core): add operator console (x402 credits + A2A network)**).
+* **Enabled chain-aware, per-chain billing and settlement behaviors**: Delivered chain-aware credits, a credit-level bridge, a global network switcher, and per-chain billing so spend/settlement can occur on the selected network—supporting multi-network operations without a single-chain assumption (**feat(tokagentos@2.0.64): chain-aware credits + credit-level bridge + global network switcher**, **feat(tokagentos@2.0.69): per-chain billing — spend & settle on the selected network**).
+* **Expanded top-up and bridging options across networks**: Added multi-chain PTON top-up support for Ethereum and Base, and implemented a canonical TON bridge on Base (Route A) using the OP Standard Bridge for “real TON” bridging pathways (**feat(billing): multi-chain PTON top-up — Ethereum + Base**, **feat(tokagentos@2.0.65): canonical TON bridge on Base (Route A) — real TON via OP Standard Bridge**).
+* **Integrated a native top-up mechanism using EIP-3009**: Implemented native EIP-3009 top-up and removed a specific BillingPageView “borrow” dependency, simplifying the billing UI’s internal coupling while enabling a standardized authorization pattern for value transfer (**feat(operator): native EIP-3009 top-up — sever the BillingPageView borrow**).
+* **Completed key x402 operational UI elements for usage and credential management**: Finalized x402 page functionality including API-key reveal and usage tables with reserved/accrued tracking, improving transparency and auditability for billing operations (**feat(operator): finish x402 page — api-key reveal, usage tables, reserved/accrued**).
+* **Added SIWE-based sign-in to support authenticated deposit/read widgets**: Implemented SIWE sign-in with bearer authentication to ensure deposit and read widgets function under authenticated contexts, improving operational security and reliability of billing widgets (**feat(operator): SIWE sign-in (bearer auth) so the deposit + read widgets work**).
+* **Wired gateway pages and chat to live data with streaming behavior**: Connected “full gateway” pages (Chat/Wallet/Automations/Plugins/Settings) to live data and updated chat to stream and use real data like the global chat, reducing discrepancies between UI and backend state (**feat(operator): wire full gateway (Chat/Wallet/Automations/Plugins/Settings) to live data**, **feat(operator): chat tab streams + uses real data like the global chat**).
+* **Introduced user-selectable LLM model controls tied to billing UX**: Added the ability for users to select an LLM model from the billing page and improved chat UI to display the active model per agent turn, aligning cost/billing awareness with model usage behavior (**feat(tokagentos@2.0.72): user-selectable LLM model from the billing page**, **feat(operator): right-align user chat bubbles + show active model per agent turn**).
+* **Stabilized monorepo build and improved contributor onboarding documentation**: Achieved a fully green monorepo build via turbo (15/15 packages) and repaired the @tokagentos/agent build (including renaming and dependency/stub adjustments), while simplifying the root README for first-time contributors (**fix(build): complete monorepo build (turbo run build now 15/15 green)**, **fix(build): repair @tokagentos/agent build (Eliza→Tokagent rename, telegram stubs, viem)**, **docs(readme): simplify root README for first-time contributors**).
 
-**Code Analysis**
+## Code Analysis
+The +38,209 lines added largely reflect substantial new UI and application-surface implementation around the operator console and x402 billing workflows, including self-contained on-chain flows (get-PTON/bridge/swap) and fully-featured billing pages with API-key reveal and usage accounting (**feat(operator): x402 on-chain flows — get-PTON, bridge, swap**, **feat(operator): finish x402 page — api-key reveal, usage tables, reserved/accrued**). Significant additions also came from porting and mirroring the operator console into scaffolded apps and making gateway pages self-contained, which typically involves duplicating/standardizing page composition and data wiring across multiple app entry points (**feat(scaffold): port operator console (x402 redesign) into scaffolded apps**, **refactor(operator): make full-gateway pages self-contained + mirror to scaffold**).
 
-The net addition of +202,397 lines is largely driven by the introduction of substantial new code and assets, most prominently the “first architectural draft” (+180,846/-0), indicating an initial scaffold or major baseline landing in the repository. Additional large additions align with structural and functional build-out across the stack: integrating the frontend into the repository and hardening RPC query behavior (+9,922/-1), refactoring contract logic while adding agent testing infrastructure (+7,002/-396), and implementing the GateManager onboarding gate with UI (+844/-1). 
+The -8,290 lines deleted indicate meaningful restructuring and cleanup alongside feature delivery. The x402 tab was explicitly “restructured,” and the full-gateway pages were refactored to be self-contained, which commonly results in removal of older, coupled implementations in favor of consolidated components (**feat(operator): restructure x402 tab into inline real-data billing surface**, **refactor(operator): make full-gateway pages self-contained + mirror to scaffold**). Additional deletions are consistent with the simplified root README and build repairs that likely removed obsolete configuration or legacy references (e.g., renaming and stub updates) (**docs(readme): simplify root README for first-time contributors**, **fix(build): repair @tokagentos/agent build**).
 
-The deletions (-1,749) are comparatively modest relative to additions and are consistent with iterative refinement rather than downsizing—e.g., UI polish that both adds and removes code (+1,147/-566), refactors that simplify tests and anti-spam flows (+161/-267), and targeted logic fixes such as correcting how _allReportsResolved reads from the reports mapping while adding comprehensive refund/unbonding tests (+409/-1). Overall, the change pattern indicates an early-stage build moving quickly from architecture to functional contract flows, while already incorporating quality controls such as expanded automated tests and iterative refactoring for maintainability.
+Overall, the pattern—large feature additions paired with targeted refactors and build stabilization—suggests the repository is moving from prototype-like surfaces toward operational readiness: live-data wiring, authenticated flows (SIWE), multi-chain billing/top-ups, and repeatable builds provide a foundation for predictable releases and lower integration risk (**feat(operator): SIWE sign-in...**, **feat(tokagentos@2.0.64)...**, **fix(build): complete monorepo build...**).
 
-**Next Steps**
+## Next Steps
+Continue iterating on the operator console and x402 billing surface to further consolidate self-contained gateway pages and scaffold parity, building on the recent refactors and ports (**refactor(operator): make full-gateway pages self-contained + mirror to scaffold**, **feat(scaffold): port operator console (x402 redesign) into scaffolded apps**). Further enhancements are also implied around multi-chain billing and on-chain credit flows, extending the current Ethereum/Base and bridge-route work (**feat(billing): multi-chain PTON top-up — Ethereum + Base**, **feat(tokagentos@2.0.69): per-chain billing — spend & settle on the selected network**).
 
-Next work is likely to focus on continuing to harden the end-to-end bounty lifecycle (including anti-spam, accounting correctness, and acceptance/minting flows) while extending test coverage and refining frontend workflows that were recently wired for vulnerability reporting and onboarding gate UX. Further iterations may also consolidate deployment and configuration workflows, building on the existing automation added for GateManager deployment.
 
-### scatter-dex  ·  [GitHub](https://github.com/tokamak-network/scatter-dex)
+# tokamak-ai-access
 
-scatter-dex appears to be a core application repository supporting Tokamak Network’s DEX-related operational flows, including operator tooling, administrative governance controls, and user-facing claim/payment experiences. The work in this period focuses on expanding admin/operator capabilities (identity issuance, sanctions management, protocol parameter control) and improving end-user claim and settlement visibility, which matters for operational reliability, compliance workflows, and revenue/treasury management.
+**GitHub**: [Link](https://github.com/tokamak-network/tokamak-ai-access)
 
-**+72,806** added · **-25,282** deleted · **+47,524** net change
 
-**Key Accomplishments**
+## Overview
+tokamak-ai-access appears to focus on access control and key management mechanisms for applications interacting with Tokamak services, with an emphasis on Ethereum-based authentication patterns. During this period, development centered on enabling delegated key issuance using SIWE (Sign-In With Ethereum), a capability relevant for partner application onboarding and controlled access provisioning. This matters to users and investors because delegated issuance can reduce friction for integrations while maintaining clearer authorization boundaries between Tokamak systems and third-party apps.
 
-- Scaffolded a dedicated platform admin application and identity issuance workflow
-- Implemented wallet-signature based admin authentication (SIWE) for operator admin
-- Expanded protocol governance surfaces with full read/write coverage of parameters
-- Added sanctions list administration tooling
-- Introduced treasury and fee-claim functionality at the contract and admin UX layers
-- Enhanced operator dashboards for revenue, settlements, and analytics
-- Reworked operator information architecture and identity surfaces
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 1 |
+| Contributors | 1 |
+| Lines Added | +182 |
+| Lines Deleted | -0 |
+| Net Change | +182 |
 
-**Code Analysis**
 
-The +72,806 lines added largely reflect substantial new application surface area across admin and operator tooling, including scaffolding a platform admin app with X.509 issuance (commit: “scaffold platform admin app with operator X.509 issuance”), governance/configuration coverage for protocol parameters and verifier/DEX/settlement controls (commits: “protocol page — full read + write coverage…”; “protocol phase 2…”), and expanded dashboards for analytics, revenue, and settlements (commit: “/analytics page…”; PR#865). Additions also include functional UX flows such as the 3-step registration wizard (commit: “3-step wizard…”) and claim flow restructuring (commits: “port Pay's /claim page…”; “per-recipient claim + Inbox page…”), as well as leaderboard segmentation enhancements (PR#869, PR#870).
+## Period Goals
+The primary objective for this reporting period was to add delegated SIWE key issuance functionality intended for partner applications. With only one feature-focused commit, the period’s scope appears concentrated on introducing the initial implementation needed to support that delegated issuance flow.
 
-The -25,282 lines deleted indicate meaningful cleanup and corrective maintenance rather than simple churn. Notably, a large removal came from dropping accidentally staged artifacts like unrelated lockfiles and lcov.info (commit: “drop unrelated lockfiles + lcov.info accidentally staged” at -10,210), and removing tracked zk-related assets to prevent drift during branch switching (commit: “untrack …/zk…” at -913). Additional deletions are consistent with refactoring and formatting updates (commit: “refresh forge fmt + gas snapshot”) and iterative UI/feature revisions captured in “review” commits that incorporate bot feedback (commits: “review(pay): bot feedback…”; “review(pro): bot feedback…”).
+## Key Accomplishments
+* **Implemented delegated SIWE key issuance for partner apps**: Added functionality to issue SIWE-associated keys via a delegated mechanism (“feat(keys): delegated SIWE key issuance for partner apps”), supporting partner application access provisioning without requiring the same direct issuance path as first-party applications.
+* **Expanded key-management capabilities to support partner integration requirements**: Introduced new code required for partner-oriented issuance flows (same commit), which can enable clearer separation of responsibilities between Tokamak-operated components and external application issuers/consumers.
 
-Overall, the magnitude of net change (+47,524) suggests the repository is in a feature expansion phase, with concentrated work on governance/admin readiness (protocol controls, sanctions management, identity/issuance) alongside improved operational observability (analytics, revenue/settlements) and user-facing claim flows. The parallel investment in tests (vitest + 30 unit tests) and repository hygiene indicates attention to maintainability as functionality grows.
+## Code Analysis
+The net change of **+182 lines** with **no deletions** indicates a straightforward feature addition rather than refactoring or optimization. The added code corresponds to the new capability described in the commit—**delegated SIWE key issuance for partner apps**—suggesting new logic and/or supporting structures were introduced to enable delegated issuance. The absence of removed code implies the repository is in an additive stage for this area of functionality, with the period focused on introducing baseline capabilities rather than iterating on or consolidating existing implementations.
 
-**Next Steps**
+## Next Steps
+Next steps are likely to focus on validating the delegated SIWE key issuance flow in real partner integrations and adding supporting test coverage and documentation to operationalize the feature for broader use.
 
-Near-term follow-on work is implied by “phase 1” SIWE admin authentication, suggesting subsequent phases to complete and harden the admin auth flow (commit: “wallet-signature admin auth (SIWE) — phase 1”). Additional incremental work is likely to continue around treasury/fee claim UX and settlement/revenue reporting, given the cluster of merged PRs focused on Treasury, FeeVault, and earnings/leaderboard segmentation (PR#866–#873).
 
-### tokamak-landing-page  ·  [GitHub](https://github.com/tokamak-network/tokamak-landing-page)
+# tokamak-landing-page
 
-This repository contains the main public-facing Tokamak Network website, serving as the primary entry point for users to learn about the ecosystem, products, and updates. It matters to users as the first point of discovery and navigation, and to investors/stakeholders as a core channel for communicating positioning, partner presence, and ongoing progress through published reports and insights.
+**GitHub**: [Link](https://github.com/tokamak-network/tokamak-landing-page)
 
-**+14,671** added · **-42,083** deleted · **-27,412** net change
 
-**Key Accomplishments**
+## Overview
+This repository contains the main Tokamak Network public website, serving as the primary entry point for users seeking ecosystem information and key product narratives. As the first-touch surface for many users, changes here directly affect discoverability (SEO), perceived product clarity, and web performance—factors that influence acquisition and stakeholder confidence.
 
-- Redesigned the main landing page structure
-- Removed unused media and legacy routing
-- Rebuilt the /about/price section as a dashboard
-- Published and archived periodic reporting content
-- Optimized subpages and removed unused assets
-- Redesigned partner presentation
-- Expanded and standardized “bento” content modules
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 6 |
+| Contributors | 1 |
+| Lines Added | +152 |
+| Lines Deleted | -29 |
+| Net Change | +123 |
 
-**Code Analysis**
 
-The +14,671 lines added reflect substantial new page layouts and UI components introduced during redesign efforts, including the landing page restructure with channel feed and staking cards (“feat: redesign landing — channel feed, big staking cards, community video”), new informational sections like the ZK Privacy hero (“feat: add ZK Privacy hero section with assembly line video”), and new /about subpages and archives (“feat: add /about/insight and /about/reports archive pages”; “feat: add Biweekly Report #7”). Additions also include multiple interactive showcase prototypes (R3F 3D showcase, interactive console buttons, diorama hotspot prototype) and new carousel-based presentation elements (“feat: add cinematic product-showcase carousel”; “feat: add ecosystem fan carousel section”).
+## Period Goals
+This period focused on synchronizing a broader landing-page overhaul from development to production, covering SEO/AI discovery improvements, subpage work, performance tuning, and cleanup of legacy elements (PR#26). In parallel, the team aimed to improve media behavior on the homepage (correct playback and better mobile loading) and update site messaging/metadata assets to align with current positioning.
 
-The -42,083 lines deleted indicate a period dominated by replacement and cleanup rather than incremental expansion. Major deletions are directly tied to replacing legacy landing page implementation (“feat: redesign landing …” with -33,954 lines) and removing unused videos and legacy price routes (“perf+chore: drop unused videos and legacy price routes” with -4,107 lines). Additional deletions come from optimization and asset purging (“perf: optimize subpages + purge unused assets”) and targeted redesigns that reduced older layouts (“feat: redesign /about/partners as aurora gradient logo wall”). Overall, the net negative change (-27,412) suggests consolidation: older code paths and assets were retired as new, more modular layouts and performance-minded media handling were introduced, reflecting an emphasis on maintainability and load efficiency alongside visual and structural updates.
+## Key Accomplishments
+* **Merged a consolidated landing overhaul into main**: Synced development work to production to deliver a packaged set of updates spanning landing changes, SEO/AI discovery, subpages, performance work, and legacy cleanup (PR#26), reducing drift between branches and enabling stakeholders to reference a single canonical site state.
+* **Corrected showcase video playback behavior**: Adjusted showcase clips to play to full length instead of auto-skipping (commit: “fix: play showcase clips to full length instead of auto-skipping”), improving content comprehension and preventing users from missing key segments of the on-page product narrative.
+* **Improved mobile loading performance for hero media**: Deferred loading/playing the hero clip on mobile until after first paint (commit: “perf: defer hero clip on mobile until after first paint”), reducing render-blocking behavior and improving perceived load responsiveness on constrained devices.
+* **Updated public-facing metadata, messaging, and robustness**: Updated the Open Graph image and rewrote the home description around “privacy-focused custom L2” messaging (commits: “chore: update OG image…”, “chore: rewrite home description…”), refreshed a showcase video cut (commit: “chore: update Tonnel showcase video…”), and added a guard against an undefined FX rate in `/api/price/candles` (commit: “fix: guard against undefined FX rate…”), improving share-preview consistency and reducing the chance of runtime errors in the pricing API endpoint.
 
-**Next Steps**
+## Code Analysis
+The net +123 lines reflect targeted additions primarily in two areas: (1) homepage/media logic and performance controls, and (2) small reliability and content/metadata updates. The largest functional change was the adjustment to video playback so showcase clips run to completion (+87/-16), indicating code changes around clip timing or playback control rather than simple content edits. Performance-oriented additions for mobile hero behavior (+36/-3) suggest new conditional loading or deferred execution paths designed to improve first paint.
 
-Continue iterating on the redesigned landing and subpage experiences, particularly the interactive showcase components and bento-based content organization introduced this period. Maintain the performance workstream by further trimming unused assets and refining media gating patterns established in the recent optimization commits.
+The -29 lines deleted are consistent with small cleanups and replacing prior behavior (e.g., removing earlier playback/auto-skip logic and minor adjustments accompanying OG/home copy updates). Combined with the merged “legacy cleanup” noted in PR#26, the overall change pattern indicates incremental maturation: tightening user-visible behavior (media), improving performance characteristics (mobile first paint), and reducing edge-case failures (undefined FX rate) while keeping scope controlled.
 
-### tokamak-ai-access  ·  [GitHub](https://github.com/tokamak-network/tokamak-ai-access)
+## Next Steps
+Continue iterative refinement of the landing overhaul introduced in PR#26 by monitoring real-user performance on mobile media and adjusting loading thresholds as needed. Maintain alignment between public messaging assets (OG images, homepage copy, showcase videos) and ongoing ecosystem updates, while extending defensive checks for API routes similar to the `/api/price/candles` fix.
 
-tokamak-ai-access appears to be a web application and companion CLI that supports access configuration and user workflows, including staking-related functionality, within the Tokamak ecosystem. During this period, work focused on establishing an initial architecture, upgrading the front-end stack to Next.js 15, and improving configuration and environment-management workflows via the CLI. This matters to users and stakeholders because it reduces friction in setup and supports account/key management and staking interactions through more reliable tooling.
+---
 
-**+44,833** added · **-10,835** deleted · **+33,998** net change
 
-**Key Accomplishments**
+# tokamak-network-gitbook
 
-- Upgraded the application stack to Next.js 15.5.18 and refreshed the test/tooling baseline
-- Resolved WalletConnect module resolution issues in Next.js 15 via explicit transpilation configuration
-- Established an initial architectural baseline for the project
-- Implemented staking integration supported by a proxy API and improved CLI setup
-- Expanded staking UX with Unstake functionality and supporting hooks
-- Strengthened API key route reliability through end-to-end tests
-- Improved CLI environment safety with backup/restore workflows and automatic cleanup
+**GitHub**: [Link](https://github.com/tokamak-network/tokamak-network-gitbook)
 
-**Code Analysis**
 
-The net change of +33,998 lines reflects substantive feature build-out and framework/tooling modernization. Significant additions align with (1) the introduction of a foundational structure (Launched the first architectural draft), (2) expanded product capabilities around staking and unstaking flows (feat: staking integration, proxy API, and CLI setup improvements; feat: add Unstake tab…; feat: add useUnstake hooks…), and (3) strengthened CLI functionality for managing environment variables and multi-target configuration (feat(cli): add cleanup-env and restore-env…; feat: add openclaw and hermes targets…; feat: add oneshot cleanup…).
+## Overview
+This repository maintains Tokamak Network’s GitBook-based documentation, covering user- and developer-facing guides across core topics such as staking, DAO information, rollup hub references, and testnet details. Accurate, navigable documentation reduces onboarding friction, lowers support burden, and improves trust by ensuring stakeholders can verify processes (e.g., withdrawals, staking access) against current network behavior.
 
-The -10,835 lines deleted indicate notable churn typical of stabilization after major changes, including large-scale adjustments to support Next.js 15 module resolution and dependency upgrades (fix: add transpilePackages…; chore: upgrade next to 15.5.18…). Deletions also came from intentional cleanup and consolidation, such as removing planning artifacts (chore: remove planning artifacts…) and refactoring the dashboard CLI setup flow to move inputs into scripts (refactor(dashboard): make CLI setup prompt static, move inputs to script). Overall, the pattern suggests a project moving from early scaffolding toward operational readiness: new functionality is being introduced, while tests and documentation are being updated to keep behavior consistent across environments (test(cli): fix hermes/openclaw/shell-profile tests…; docs: add configurator flow diagram HTML).
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 11 |
+| Contributors | 1 |
+| Lines Added | +1,885 |
+| Lines Deleted | -283 |
+| Net Change | +1,602 |
 
-**Next Steps**
 
-Continue stabilizing the Next.js 15-based application after the dependency upgrades and module-resolution changes, focusing on reducing integration churn. Expand automated coverage and harden CLI configuration behavior across targets, building on the recent test repairs and alignment with official documentation.
+## Period Goals
+During this period, work focused on expanding and correcting documentation content, including migrating previously dead links into GitBook pages and bringing key guides (staking, DAO/info, Rollup Hub) up to date. A second emphasis was improving discoverability and usability through SEO meta descriptions, link hygiene, and language consistency between English and Korean documentation.
 
-### rivai  ·  [GitHub](https://github.com/tokamak-network/rivai)
+## Key Accomplishments
+* **Migrated dead Notion content into GitBook pages for TRH documentation**: Replaced unavailable Notion references by porting TRH SDK/Platform content into GitBook pages, improving long-term accessibility and reducing the risk of user drop-off due to dead external links (docs: migrate dead Notion links into GitBook pages (TRH SDK/Platform); docs: fix review findings in migrated TRH guides).
+* **Updated staking documentation to reflect current access paths and tooling references**: Revised staking docs to account for Etherscan-related guidance and “community edition access,” aligning instructions with the current user flow and reducing confusion during staking and verification (docs: update staking docs for Etherscan & community edition access; docs(ko): port PR #1 staking rewrite + info/DAO link fixes + testnet chain ID).
+* **Improved cross-language consistency and navigation for Korean documentation**: Ported a staking rewrite into Korean, corrected info/DAO link targets, and replaced a stale Korean Rollup Hub stub with navigation that points to the English Rollup Hub content, reducing divergence between locales and preventing users from relying on outdated pages (docs(ko): port PR #1 staking rewrite + info/DAO link fixes + testnet chain ID; docs(ko): replace stale rollup-hub stub with English-link nav to Tokamak Rollup Hub).
+* **Expanded SEO metadata coverage across documentation pages**: Added SEO meta descriptions to key entry pages and then extended those descriptions to remaining pages, increasing clarity in search results and improving content discoverability for new users and developers (docs: add SEO meta descriptions to key entry pages; docs: expand SEO descriptions to remaining pages + fix withdrawal eligibility wording).
+* **Corrected withdrawal eligibility wording to match intended semantics**: Refined language around withdrawal eligibility—specifically clarifying the “at or below current block” condition—reducing the likelihood of misinterpretation in user operational steps (docs: expand SEO descriptions to remaining pages + fix withdrawal eligibility wording; docs: fix withdrawal eligibility wording (at or below current block); docs(ko): fix withdrawal eligibility wording per review).
+* **Fixed broken links and stale references across core informational areas**: Addressed link rot and outdated references in DAO/staking/info pages, improving navigation integrity and lowering support overhead caused by users encountering dead ends (docs: fix broken links and stale references in DAO/staking/info pages).
+* **Refreshed Thanos Sepolia testnet reference details**: Updated testnet documentation to reflect current chain ID and L1 contract details and noted Chainlist status, helping developers avoid configuration errors when connecting tools and deploying/testing (docs: update Thanos Sepolia testnet info (chain ID, L1 contracts, Chainlist status)).
 
-rivai is a newly established monorepo workspace that consolidates multiple components—gameplay prototypes, a launcher UI, a portal/design-system surface, automation, and extensive pipeline documentation—into a single codebase. During this period it progressed from initial repository setup to playable movement/combat and animation/retarget tooling work, alongside release automation and written process artifacts.
+## Code Analysis
+The net addition of **+1,602 lines** primarily reflects substantive documentation growth rather than code changes, driven by content migrations and expanded guides. The largest increase came from migrating dead Notion links into first-party GitBook pages for TRH SDK/Platform documentation (**+763/-18**), indicating a deliberate move toward consolidating critical knowledge into a maintained documentation system; follow-up edits addressed review findings in the migrated TRH guides (**+6/-10**), suggesting iteration and quality control after the migration.
 
-**+41,653** added · **-2,845** deleted · **+38,808** net change
+Additional large additions were associated with staking documentation updates in both English and Korean (**+376/-10** and **+376/-25**), consistent with a broader effort to keep operational user guidance aligned with current access pathways (including Etherscan and “community edition access”). The deletion volume (**-283**) is notably influenced by removing a stale Korean Rollup Hub stub (**+15/-206**), which indicates cleanup of outdated or redundant content rather than loss of functional documentation; this is complemented by smaller link-fix commits that removed/adjusted incorrect references without large net changes.
 
-**Key Accomplishments**
+The SEO-focused commits (**+136/-0** and **+200/-1**) show structured improvements to metadata coverage across documentation pages, suggesting increasing maturity in how documentation is managed—not only for correctness but also for discoverability and maintainability. Overall, the pattern of migrations, cleanup of stale pages, and precision edits to eligibility wording indicates the repository is being managed as a living operational resource where accuracy and navigability are treated as ongoing maintenance concerns.
 
-- Established the monorepo foundation
-- Implemented baseline Unreal Engine build progression and dedicated multiplayer sourcing
-- Built movement capabilities aligned to a GunZ-like reference
-- Extended advanced traversal in the character movement component
-- Developed combat mechanics including aiming and action handling
-- Integrated camera and control tooling for iteration
-- Automated and fixed animation retargeting pipelines
+## Next Steps
+Continue replacing or consolidating remaining legacy/stale documentation fragments to reduce reliance on external sources and minimize duplication across languages. Further incremental reviews are likely needed to keep staking, testnet, and TRH-related pages aligned with evolving network parameters and to prevent link and terminology drift over time.
 
-**Code Analysis**
 
-The +41,653 lines added largely reflect initial repository bootstrapping plus substantial feature and documentation drops. Large additions are consistent with the initial monorepo commit (+14,797) and multiple feature bundles spanning gameplay (movement/combat/camera) and animation retargeting (“M1-A01 — dash, TPS camera, GunZ retarget pipeline”; “GunZ wall jump, wall run and wall hang in CMC”; “GunZ convergent aim, recoil bloom, reload & action-cancel”; “directional dash montages + raw root motion”). Another notable driver is documentation volume, including distribution pipeline write-ups and diagrams, pipeline localization to English, and detailed M0/M1 task/research notes (“docs(blog)…5-lane diagrams”; “docs(pipeline)…presentation script”; “docs(m0)…task notes”).
-The -2,845 lines deleted appear primarily associated with iterative UI and design-system changes, where redesigns naturally replace prior implementations (e.g., launcher redesign with a net negative in one commit: “full-bleed key art redesign with Blur tokens” at +631/-741, plus portal refactor “Anthropic to 11x” at +338/-245). Overall, the net +38,808 indicates a phase of foundational construction: standing up first runnable builds and core mechanics, while simultaneously documenting and standardizing pipelines. The presence of CI/release automation and documented distribution workflows suggests the repository is moving beyond experimentation toward repeatable build/release practices, even as UI/portal elements continue to iterate and consolidate.
+# tokamak-thanos
 
-**Next Steps**
+**GitHub**: [Link](https://github.com/tokamak-network/tokamak-thanos)
 
-Based on the current trajectory—core mechanics landing alongside automation and pipeline documentation—the next logical focus is continued iteration on the M1/M0 milestones and further stabilization of build/release processes introduced in the CI and release automation work. Additional refinement is also implied for portal/launcher surfaces following the design-system switch and redesign commits.
 
-### llm-api-gateway  ·  [GitHub](https://github.com/tokamak-network/llm-api-gateway)
+## Overview
+tokamak-thanos is Tokamak Network’s optimistic rollup stack implementation intended to support Ethereum scaling by enabling off-chain execution with on-chain security guarantees. As a rollup stack, it is a core infrastructure component that can affect throughput, transaction costs, and the operational tooling available to rollup operators and application teams. For users and investors, progress in this repository is relevant because it can translate into improved scalability characteristics and a clearer path to production deployment and maintenance of rollup-based services.
 
-This repository contains an API gateway/proxy component that supports Tokamak Network’s LLM-integrated services, including operational logic referenced as “proxy” and “vault” in the recent commits. During this period, work focused on production service architecture changes and Ethereum mainnet deployment steps for components named PTON and ClaudeVault, which are relevant to reliability and usability of on-chain interactions mediated through this gateway.
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 0 |
+| Contributors | 0 |
+| Lines Added | +0 |
+| Lines Deleted | -0 |
+| Net Change | +0 |
 
-**+17,439** added · **-17,028** deleted · **+411** net change
 
-**Key Accomplishments**
+## Period Goals
+No commit activity or merged PRs were recorded for this reporting period, so specific engineering goals cannot be substantiated from repository change history. The absence of changes suggests the period did not include tracked implementation, refactoring, or documentation updates within this repository.
 
-- Implemented and then rolled back a Postgres-backed shared production migration for the proxy
-- Deployed PTON and ClaudeVault to Ethereum mainnet
-- Made depositX402 permissionless in the vault
+## Key Accomplishments
+No accomplishments can be evidenced for this period because there were no commits or merged PRs recorded.
 
-**Code Analysis**
+## Code Analysis
+With **+0 lines added** and **-0 lines deleted**, there is no code-level signal in this period indicating new features, optimizations, refactors, or maintenance work landed in the repository. From a maturity and delivery perspective, this period should be interpreted as **no measurable repository evolution** (no incremental implementation progress, no visible cleanup, and no documented changes) rather than as a positive or negative change in quality.
 
-The very large code churn (+17,439 / -17,028) with a relatively small net change (+411) is consistent with a substantial architectural change being introduced and then reverted in the same period. Specifically, the Postgres-backed shared production service migration for the proxy appears to have accounted for most of the additions and deletions, followed by a revert that removed much of that introduced code and configuration (feat(proxy)... and its corresponding Revert... commit).  
+## Next Steps
+To re-establish measurable progress, the next period should include repository-tracked updates (commits and/or PRs) that clearly document implemented changes and their rationale. Stakeholders should rely on future commit/PR history in this repository to confirm scope, delivery cadence, and technical direction.
 
-The remaining net additions likely reflect the mainnet deployment work for PTON and ClaudeVault and the targeted vault change to make depositX402 permissionless (feat(mainnet)..., feat(vault)...). Overall, this pattern suggests the team is iterating on production architecture while keeping the codebase aligned with deployable, mainnet-oriented functionality—making large changes, then promptly undoing them when necessary to maintain stability.
+---
 
-**Next Steps**
 
-Given the proxy’s Postgres-backed shared production migration was implemented and then reverted during this period, the next step is to reassess and refine that approach before reattempting production rollout. In parallel, follow-up work is expected to focus on operational validation of the Ethereum mainnet deployment for PTON and ClaudeVault and the implications of making depositX402 permissionless.
+# toki
 
-### trh-wiki  ·  [GitHub](https://github.com/tokamak-network/trh-wiki)
+**GitHub**: [Link](https://github.com/tokamak-network/toki)
 
-trh-wiki is a documentation repository that captures operational knowledge, deployment references, and troubleshooting guidance for Tokamak Network-related environments and integrations. It matters because it reduces deployment and maintenance risk for teams operating Tokamak-based infrastructure, and it provides a clearer, more consistent knowledge base for both internal stakeholders and external integrators.
 
-**+15,947** added · **-984** deleted · **+14,963** net change
+## Overview
+`toki` is a Tokamak Network repository that, during this period, focused on integrating an extension codebase into the main repository and expanding an “hub” application experience, including login-home functionality, an ecosystem mini-hub, and workspace-oriented features. It matters because these changes consolidate development into a single codebase and add user-facing flows that can reduce friction in onboarding and improve navigation across applications and services.
 
-**Key Accomplishments**
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 7 |
+| Contributors | 1 |
+| Lines Added | +18,294 |
+| Lines Deleted | -185 |
+| Net Change | +18,109 |
 
-- Ingested Thanos Testnet deployment configuration artifacts
-- Standardized documentation metadata across the wiki
-- Published a Thanos Sepolia Testnet reference deployment and supporting chain information updates
-- Expanded troubleshooting coverage for bridge and provisioning issues
-- Improved block explorer operational guidance and recovery procedures
-- Documented additional operational tooling endpoints for troubleshooting
-- Recorded integration-specific fixes for cross-trade labeling
 
-**Code Analysis**
+## Period Goals
+This period prioritized consolidating code by integrating `toki-extension` into the main repository and shipping multiple hub-oriented UI/UX upgrades (login-home hub, app launcher, ecosystem mini-hub, and additional dashboard experiences). A secondary goal was to improve reliability of user progression through onboarding and to add infrastructure capabilities for deterministic paymaster deployment, alongside targeted documentation updates for private-transfer verification and handoff.
 
-The +15,947 lines added are primarily attributable to the ingestion of substantial documentation and configuration reference materials, dominated by the addition of Thanos Testnet deployment “8671124e” config files (+14,702) and the inclusion of Thanos Sepolia Testnet reference deployment content. Additional additions reflect systematic documentation improvements: standardizing frontmatter across 53 pages, expanding troubleshooting guides (bridge L2 auto-switch error, provisioning bug entry), and adding operational procedures and configuration guidance for Blockscout and related explorer integrations.
+## Key Accomplishments
+* **Integrated extension code into the main repository**: Consolidated `toki-extension` into the primary repo to reduce fragmentation and simplify ongoing development and maintenance efforts (*chore: integrate toki-extension into main repo*).
+* **Expanded hub functionality with ecosystem and workspace capabilities**: Added an “ecosystem mini-hub” and introduced “native AI Access issuance” plus an “Agent Workspace,” increasing the hub’s scope beyond a dashboard into a broader feature surface for users (*feat(hub): ecosystem mini-hub + native AI Access issuance & Agent Workspace*).
+* **Reworked the hub entry experience into a login-home and app launcher**: Converted the dashboard into a login-home hub and added an app-launcher flow (track A), improving how users discover and access applications from a central entry point (*feat(hub): turn dashboard into login-home hub + app launcher (track A)*).
+* **Added a gacha-lobby dashboard with image-card menu collage**: Implemented an additional dashboard experience with an image-card based menu collage, broadening UI options for navigation and engagement within the hub surface (*feat(hub): gacha-lobby dashboard with image-card MENU collage*).
+* **Hardened onboarding progression for resumed users**: Made onboarding completion “durable” so returning/resumed users reliably reach staking, reducing drop-off and support burden caused by inconsistent state or incomplete handoffs (*fix: make onboarding completion durable so resumed users reach staking*; PR#15).
 
-The -984 lines deleted largely reflect deliberate cleanup and restructuring work rather than feature removal. The removal of accidental empty files and stale presentation content (-929) reduces repository noise and improves clarity for readers, while smaller deletions correspond to iterative corrections (e.g., chain ID replacement, minor edits within explorer and cross-trade docs) and link/index repairs.
+## Code Analysis
+The net change of **+18,109 lines** is primarily explained by large feature integration and new hub capabilities rather than small incremental tweaks. The dominant addition is the consolidation work to integrate `toki-extension` into the main repository (*chore: integrate toki-extension into main repo*), which accounts for the bulk of new code and indicates a structural shift toward a unified codebase.
 
-Overall, the change profile indicates a documentation repository moving toward greater operational readiness and maintainability: a standardized metadata layer, clearer information architecture (core/integration/overview/concepts), and more complete runbooks for common failure modes and recovery steps. The combination of large content ingestion and targeted cleanup suggests active consolidation of knowledge into a format that is easier to navigate and keep consistent over time.
+A meaningful portion of additions also reflects multiple hub feature implementations—ecosystem mini-hub, AI Access issuance, Agent Workspace, login-home conversion, app launcher, and a gacha-lobby dashboard (*feat(hub)…* commits). These changes suggest active expansion of user-facing surfaces and navigation flows, consistent with a product area still evolving in scope and UX.
 
-**Next Steps**
+The **-185 lines deleted** aligns with smaller cleanups and adjustments that accompany feature work and bug fixes (e.g., dashboard refactoring while converting to login-home hub, and onboarding durability changes). The inclusion of deterministic CREATE3 deployment configuration for a paymaster (*feat(paymaster): deterministic CREATE3 deployment with v4 config*) indicates infrastructure-level capability being added alongside front-end or hub work, while targeted documentation additions for private-transfer verification and resume handoff (*docs(private-transfer): M0 verification + constants + resume handoff*) suggest parallel efforts to formalize operational/verification details as features evolve.
 
-Next work should continue consolidating and validating the newly ingested deployment/config references within the reorganized structure, ensuring indexes remain complete as content moves. Additional incremental updates are expected to refine troubleshooting runbooks and keep chain/network parameters (such as chain IDs and explorer configuration requirements) aligned with current environments.
+## Next Steps
+Next work is expected to focus on stabilizing and iterating on the newly integrated codebase (post-`toki-extension` consolidation) and refining the hub’s new flows (login-home, app launcher, ecosystem mini-hub, and workspace-related features) based on integration and user progression requirements. Further follow-through on deterministic deployment and private-transfer documentation is also likely as these capabilities are exercised in real environments.
 
-### channel-workspace-mirror  ·  [GitHub](https://github.com/tokamak-network/channel-workspace-mirror)
 
-This repository contains the “channel observer” and supporting runtime components used to monitor channel activity and present operational data through an observer dashboard. During this period, work focused on expanding observability (including a public observer and richer event data), introducing an indexer worker, and improving operational deployment and reliability controls. For users and stakeholders, these changes improve transparency into channel events and provide better tooling for incident awareness and monitoring workflows.
+# TON-total-supply
 
-**+6,338** added · **-1,402** deleted · **+4,936** net change
+**GitHub**: [Link](https://github.com/tokamak-network/TON-total-supply)
 
-**Key Accomplishments**
 
-- Introduced a public channel observer
-- Implemented a runtime indexer worker
-- Strengthened operational deployment with persistent AWS worker support
-- Reworked the observer dashboard information architecture
-- Improved event exploration and scalability of tables
-- Expanded event-level transparency and handling of identifiers
-- Added incident communication and refined participant visibility
+## Overview
+TON-total-supply appears to track and publish data related to the TON token’s total supply, serving as a reference point for supply transparency within the Tokamak ecosystem. Maintaining current, auditable supply records is relevant to users and investors because supply figures affect token economics analysis, reporting, and stakeholder communications. This repository’s value is primarily in keeping those records current and consistent over time.
 
-**Code Analysis**
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 1 |
+| Contributors | 1 |
+| Lines Added | +12 |
+| Lines Deleted | -6 |
+| Net Change | +6 |
 
-The net increase of +4,936 lines reflects substantial functional expansion concentrated in the observer and its runtime support. Major additions include new monitoring capabilities (“Add public channel observer”), a new runtime component (“Add runtime indexer worker”), and deployment scaffolding (“Add persistent AWS worker deployment”). A significant portion of the added code also corresponds to front-end/dashboard reorganization—splitting pages by category, restructuring by audience, and refining navigation and menus (“Split observer dashboard into category pages”, “Restructure observer dashboard by audience”, “Restructure observer menus by monitoring category”)—as well as usability improvements such as pagination and enhanced event linkage (“Paginate observer event tables”, “Link event summaries to sections”).
 
-The -1,402 lines deleted indicates active simplification and cleanup alongside feature delivery. Examples include simplifying runtime state (“Simplify observer runtime state”), removing a confirmations runtime setting and sync interval gating (“Remove observer confirmations runtime setting”, “Remove observer sync interval gating”), and removing overview section cards (“Remove observer overview section cards”). Additional deletions tied to alignment and layout refinements (“Align observer section names and content”, “Refine observer navigation layout”) suggest iterative consolidation after restructuring.
+## Period Goals
+During this reporting period, the primary goal was to refresh and extend the repository’s supply tracking materials to reflect the latest date-specific snapshot. Based on the single commit message, the team focused on updating the repository’s data sheet for the 2026.6.1 reporting point.
 
-Overall, the blend of new capabilities (public observer, indexer worker, on-chain refresh, incident notices) with deliberate pruning (removing settings/gating and simplifying runtime state) indicates the project is moving from initial feature build-out toward more maintainable operations and clearer user workflows, without relying on accumulating configuration complexity.
+## Key Accomplishments
+* **Updated the 2026.6.1 data sheet**: Adjusted the repository’s recorded supply data for the 2026.6.1 snapshot (“update the data sheet for 2026.6.1”), helping ensure stakeholders rely on up-to-date figures when reviewing token supply information.
+* **Refined existing recorded entries while adding new ones**: Introduced incremental additions (+12) and removed outdated or superseded content (-6) as part of the 2026.6.1 update, improving the accuracy and internal consistency of the published data sheet for downstream use (analysis, reporting, and verification).
 
-**Next Steps**
+## Code Analysis
+The net change of +6 lines reflects a targeted maintenance update rather than a broad functional expansion. Specifically, the additions (+12) align with incorporating updated data for the 2026.6.1 snapshot, while the deletions (-6) indicate the removal or replacement of prior entries as part of keeping the data sheet current (“update the data sheet for 2026.6.1”). This pattern is consistent with a repository that is primarily data-maintenance oriented: small, periodic edits that prioritize correctness and traceable updates over new code functionality.
 
-Continue iterating on the observer and dashboard to improve operational workflows introduced in this period (category-based navigation, incident notices, and event exploration). Further hardening is expected around runtime behavior and monitoring reliability, building on the newly added indexer worker, on-chain state refresh, and RPC limiting.
+## Next Steps
+Continue periodic updates to the data sheet as new reporting dates occur, ensuring the repository remains a timely reference for token supply figures. Where applicable, maintain clear versioning or date-based entries so stakeholders can track changes across reporting periods.
 
-### match-explorer  ·  [GitHub](https://github.com/tokamak-network/match-explorer)
 
-match-explorer is a web-based explorer application that provides structured views into match-related data, including leaderboards, match details, and player profiles. Within the Tokamak ecosystem, it serves as a user-facing interface layer that helps stakeholders and end users navigate, search, and interpret domain data through consistent UI patterns. This matters to users by improving discoverability and usability of match information, and to investors by demonstrating product surface area and an operational foundation for data presentation.
+# zk-X509
 
-**+6,672** added · **-402** deleted · **+6,270** net change
+**GitHub**: [Link](https://github.com/tokamak-network/zk-X509)
 
-**Key Accomplishments**
 
-- Bootstrapped a Next.js 16 application with strict TypeScript
-- Implemented a shared UI component layer
-- Added a domain layer backed by deterministic fixture data
-- Delivered core explorer navigation and initial user-facing pages
-- Implemented match- and player-centric views
-- Introduced discovery features via search and leaderboard surfaces
-- Improved usability and visual coherence through theming and command palette search
+## Overview
+zk-X509 is a Tokamak Network repository focused on enabling integration workflows around zk-X509, including a registry/CMS layer, a prover-server, and client-facing tooling. During this period, the repository expanded its operational backend and developer-facing surfaces (SDK/CLI, portal) while adding security controls for registry writes, which directly affects how integrators publish and manage compliance-related metadata.
 
-**Code Analysis**
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 48 |
+| Contributors | 1 |
+| Lines Added | +13,446 |
+| Lines Deleted | -1,271 |
+| Net Change | +12,175 |
 
-The +6,672 lines added largely reflect net-new product surface area being created in a short period: a Next.js 16 strict TypeScript foundation (bootstrap Next.js 16 app), a reusable UI component set (add shared UI components), a domain layer with deterministic fixtures (add domain layer with deterministic fixture repo), and multiple top-level explorer pages (overview, leaderboard, search with suggest API, match detail, and player profile). This volume of additions is consistent with initial application bootstrapping plus the creation of several core routes and supporting modules.
 
-The -402 lines deleted are concentrated in the same period as significant UI changes, particularly theming and interaction updates (apply Blur theme and add ⌘K search modal, rebrand to RIVAI with light theme). This pattern indicates iterative refinement—removing or replacing earlier styling/implementation choices as the application’s look-and-feel and navigation model were consolidated. Overall, the code-change profile suggests the repository moved from initial scaffolding into a functional, multi-page explorer with a defined UI layer and a predictable data backbone, which is an early but concrete step toward maintainable product maturity.
+## Period Goals
+The work in this reporting period centered on making zk-X509 easier to integrate and operate by shipping a publishable SDK/CLI and a developer portal, alongside documentation for Sepolia testing and prover-server operations. In parallel, the team tightened registry/CMS security (signature-based authorization, anti-replay, and hardening) and improved backend scalability/operations by migrating CMS metadata storage to Firestore and optimizing frontend reads.
 
-**Next Steps**
+## Key Accomplishments
+* **Migrated CMS metadata storage to Firestore**: Moved the backend CMS metadata store to Firestore (Firebase serverless) to simplify operations and provide a managed persistence layer for metadata used by the registry/CMS workflows (commit: “migrate CMS metadata store to Firestore (Firebase serverless)”).
+* **Delivered a developer portal and publishable SDK/CLI**: Added a developer portal plus a publishable SDK/CLI to support third-party integration and standardized usage patterns for zk-X509 integration (commit/PR: “developer portal + publishable SDK/CLI for zk-X509 integration”, PR#142).
+* **Introduced chain-specific scoping for CMS metadata**: Implemented network-scoped CMS metadata keyed by chainId to reduce cross-network ambiguity and improve correctness for multi-chain deployments (commit: “network-scope CMS metadata by chainId”).
+* **Strengthened registry CMS write authorization**: Added owner-signature authentication for registry CMS writes, tightening who can modify registry-related metadata and reducing risk of unauthorized changes (commit/PR: “owner-signature auth for registry CMS writes”, PR#143).
+* **Added anti-replay protections for CA-registry signatures**: Implemented a single-use signature guard to prevent replay of signatures when interacting with the CA-registry, improving integrity of signature-gated operations (commit/PR: “single-use signature guard for CA-registry (anti-replay)”, PR#145).
+* **Hardened registry CMS against common web abuse patterns**: Applied security hardening measures including XSS and injection protections, size caps, and deduplicated reads to reduce attack surface and improve resilience under malformed inputs (commit/PR: “harden registry CMS — XSS, size caps, injection, dedup read”, PR#144).
+* **Improved frontend performance via batched reads**: Optimized frontend data access by batching reads through Multicall3, reducing RPC round-trips and improving responsiveness for users interacting with on-chain data (commit: “batch reads via Multicall3…”).
+* **Ensured node access is routed through connected wallets**: Updated the frontend so node access goes through the user’s connected wallet (MetaMask), aligning interactions with wallet-mediated permissions and user expectations (commit/PR: “route all node access through the connected wallet (MetaMask)”, PR#141).
+* **Expanded ecosystem visibility with a project listing**: Added a “Built with zk-X509” project listing to highlight integrations and provide a discovery surface for users evaluating adoption and examples (commit/PR: “add ‘Built with zk-X509’ project listing”, PR#146).
+* **Added an AI assistant chatbot for developer support**: Integrated a zk-X509 AI assistant chatbot using Tokamak AI / LiteLLM to provide in-product guidance and reduce friction for developers navigating setup and integration (commit/PR: “add zk-X509 AI assistant chatbot (Tokamak AI / LiteLLM)”, PR#147).
+* **Extended prover-server capabilities for compliance workflows**: Added a compliance query API intended for admin KYC reconciliation, supporting administrative review and matching of compliance-related data flows (commit: “add compliance query API for admin KYC reconciliation”).
+* **Improved documentation for testing and operations**: Updated the README with a Sepolia testing guide and aligned stale docs with current code, and added an operator guide plus delegated-proving FAQ to support ongoing operations and troubleshooting (commits/PRs: “add Sepolia testing guide…”, PR#139; “add local frontend setup against Sepolia…”, PR#140; “add prover-server operator guide and delegated-proving FAQ”).
 
-Based on the current trajectory—foundation setup, domain/fixtures, and core pages—the next logical work is to continue expanding explorer coverage and iterating on the search and navigation experience. Additional refinement of the theming and shared component layer would further reduce future delivery cost as more views are added.
+## Code Analysis
+The net +12,175 lines reflects substantial feature delivery across backend, frontend, and developer enablement. Major additions include the Firestore-backed CMS metadata migration (commit: “migrate CMS metadata store to Firestore”), the developer portal and publishable SDK/CLI (PR#142), and new user-facing surfaces such as the “Built with zk-X509” listing (PR#146) and the AI assistant chatbot integration (PR#147). Security-oriented additions are also prominent—owner-signature authorization for CMS writes (PR#143), a single-use signature guard to prevent replay (PR#145), and CMS hardening for XSS/injection and input constraints (PR#144)—indicating a shift toward operational readiness where data integrity and authorization controls are enforced.
 
-### blockball  ·  [GitHub](https://github.com/tokamak-network/blockball)
+The -1,271 lines deleted appear consistent with iterative refinement and cleanup following large feature merges, including addressing Copilot/accuracy fixes and review-driven adjustments (e.g., “address Copilot + accuracy fixes”, “review(pr#145): fix Firestore init/selection + sig casing + sweep throttle”, “refactor: simplify pass — centralize dev addresses + tighten SDK”). Performance work (batched Multicall3 reads) and correctness fixes (stamping chainId on admin save; bypassing cache for admin reads) suggest the codebase is being tuned for real usage scenarios rather than remaining purely experimental.
 
-blockball appears to be an application repository that integrates client functionality with on-chain components, including user registration and player/account handling. During this period, the project added a contract-based user registry, connected it to client signup and profile flows, and introduced ranked-account and match-receipt mechanics, which collectively strengthen identity, accountability, and data integrity for gameplay-related interactions.
+## Next Steps
+Next work is likely to focus on stabilizing and iterating on the newly introduced Firestore-backed CMS path, signature-based security controls, and the developer-facing SDK/CLI and portal based on integration feedback. Continued refinement of prover-server compliance endpoints and operational documentation would be a natural continuation of the operator and admin workflow improvements added this period.
 
-**+3,778** added · **-314** deleted · **+3,464** net change
 
-**Key Accomplishments**
+# zk-x509-ca-registry
 
-- Implemented wallet-bound ranked accounts and signed match receipts
-- Integrated client signup flow with on-chain UserRegistry and added a profile page
-- Added on-chain UserRegistry module and exposed signup/profile endpoints
-- Established a Foundry-based contracts workspace and deployed UserRegistry to Sepolia
-- Delivered an on-chain registered players page
-- Improved authentication resilience by refreshing Privy JWKS and handling key rotation
-- Hardened on-chain call parsing and operational tooling
+**GitHub**: [Link](https://github.com/tokamak-network/zk-x509-ca-registry)
 
-**Code Analysis**
 
-The +3,778 lines added largely represent new end-to-end capability spanning smart contracts, backend/on-chain integration, and client features. Major additions include a Foundry contracts workspace and a Sepolia deployment of UserRegistry (feat(contracts): Foundry workspace + UserRegistry on Sepolia), an Elixir UserRegistry module plus signup/profile endpoints (feat(onchain): UserRegistry Elixir module + signup/profile endpoints), and substantial client-side work to wire signup into the registry and provide a profile page (feat(client): wire signup flow to UserRegistry + profile page). Additional functional scope came from ranked systems tied to wallet identity and signed match receipts (feat(ranked): wallet-bound ranked accounts and signed match receipts) and UI for viewing on-chain registered players (feat(players): on-chain registered players page).
+## Overview
+`zk-x509-ca-registry` appears to serve as a registry of X.509 certificate authority (CA) artifacts and related service metadata used by Tokamak Network components that rely on CA-based trust. During this period, activity focused on registering and updating CA entries tied to specific chains and on-chain addresses, supporting operational correctness for services such as zkScatter users and relayers. For stakeholders, this repository matters because it is part of the trust and configuration surface area that enables dependent services to validate identities and route to the correct on-chain endpoints.
 
-The -314 lines deleted indicate iterative corrections and tightening rather than broad refactoring: authentication code was adjusted to better handle JWKS refresh and key selection, and stale sessions were reset (fix(auth): refresh Privy JWKS and reset stale client sessions; fix(auth): try every PRIVY JWKS key when verifying access tokens). Smaller targeted fixes improved robustness of on-chain tooling by correctly parsing cast call output (fix(onchain): parse cast call single-line tuple output), refined lobby listings (fix(lobby): hide practice rooms from the room list), and stabilized production log ranges by setting a default deploy block (fix(players): default deploy block so prod has a sane log range). Overall, the change profile suggests the project is moving from foundational integration (contract + backend + client wiring) into hardening (auth reliability, parsing edge cases, environment/tooling consistency) typical of a system being prepared for broader usage.
+## Statistics
+| Metric | Value |
+|--------|-------|
+| Commits | 12 |
+| Contributors | 1 |
+| Lines Added | +746 |
+| Lines Deleted | -17 |
+| Net Change | +729 |
 
-**Next Steps**
 
-Likely next work is continued integration and hardening around the UserRegistry-anchored signup/profile flows and ranked match receipt handling, building on the newly added contract, endpoints, and client UI. Additional operational stabilization is also implied by recent fixes to authentication, on-chain call parsing, and production log range defaults.
+## Period Goals
+The primary goal this period was to expand and refresh the repository’s CA certificate set and associated service metadata, as reflected by repeated “Add/update CA certs + service metadata” commits. A second goal was to register specific CA/service entries for zkScatter user and relayer components across multiple environments (notably chain IDs 31337 and 11155111) with explicit on-chain addresses, as shown in the merged PRs.
 
-### Tokamak-zk-EVM-contracts  ·  [GitHub](https://github.com/tokamak-network/Tokamak-zk-EVM-contracts)
+## Key Accomplishments
+* **Registered zkScatter relayer service metadata on Sepolia**: Added a registry entry for chain ID `11155111` at address `0x9fde6182b1fd10f2edfe15b704fe95787c170914` labeled “zkScatter Relayers,” improving clarity and alignment of environment-specific service configuration (PR#51; commit “Add/update CA certs + service metadata (#51)”).
+* **Registered zkScatter user service metadata on Sepolia**: Added a registry entry for chain ID `11155111` at address `0x3cf6a96f1970053ffdf957074f988ad53d13ada3` labeled “zkScatter Users,” supporting correct referencing of the user-facing service endpoint/configuration for that network (PR#50; commit “Add/update CA certs + service metadata (#50)”).
+* **Added CA material for zkScatter users in a local/dev environment**: Introduced a CA entry on chain ID `31337` for address `0x7f01274221ba4a8edbb7255b01fdc8c3f51cff9e` (“zkScatter_users”), strengthening the repository’s ability to support controlled testing and local deployments with explicit trust anchors (PR#49; commit “Add/update CA certs + service metadata (#49)”).
+* **Added CA material for a relayer CA in a local/dev environment**: Added CA data on chain ID `31337` for address `0x05052c7ae7e15bcfe983506b2eebd691895fe8bc` (“Relayer CA”), enabling relayer-related flows to reference an explicit CA entry for the local/dev network (PR#48 and PR#46; commits “Add/update CA certs + service metadata (#48)” and “(#46)”).
+* **Registered zkScatter users on a local/dev environment**: Registered chain ID `31337` at address `0x7f01274221ba4a8edbb7255b01fdc8c3f51cff9e` (“zkScatter-users”), improving consistency of registry-based lookups for zkScatter user components during testing (PR#47; commit “Add/update CA certs + service metadata (#47)”).
+* **Registered multiple relayer-related entries on a local/dev environment**: Registered chain ID `31337` relayer entries, including `0x93b87e23ae6f5345ecc1ff20323a2def3351f579` (“Relayer CA”) and `0x05052c7ae7e15bcfe983506b2eebd691895fe8bc` (“Relayer CA”), indicating iterative alignment of relayer CA/service metadata for the same environment (PR#45, PR#44; commits “Add/update CA certs + service metadata (#45)” and “(#44)”).
+* **Registered an additional relayer entry variant in a local/dev environment**: Registered chain ID `31337` at address `0x3008c1e01962fbfb8df578bf5b881d5ab9ae49b1` labeled “zlkScatter_relayers,” expanding the set of relayer-related registry entries (PR#43; commit “Add/update CA certs + service metadata (#43)”).
+* **Registered a delegated no-disclosure entry in a local/dev environment**: Registered chain ID `31337` at address `0x0d3aa1ff33792cd98b966846b0f661276e8ea4e1` labeled “delegated-no-disclosure-1,” reflecting additional service/CA metadata tracked by the registry for privacy- or disclosure-scoped use cases (PR#42; commit “Add/update CA certs + service metadata (#42)”).
 
-Tokamak-zk-EVM-contracts contains on-chain smart contracts and supporting tooling related to ZK-EVM verification workflows, deposit/withdrawal flows, and state management. During this period, the work evidenced by commits focused heavily on operational tooling and documentation around “private-state” CLI recovery and observability, which are critical for reliably managing state and user funds flows in ZK-enabled environments.
+## Code Analysis
+The +746/-17 net change is dominated by repeated additions of CA certificates and associated service metadata, as evidenced by nine commits titled “Add/update CA certs + service metadata” with large additions (+81 each for #40–#45, #47, #50, #51). This pattern is consistent with appending or expanding a structured registry (e.g., additional CA entries, chain/address records, and metadata blocks) rather than algorithmic code changes. Smaller update commits (#46, #48, #49 with +5/-5 and +7/-7) indicate iterative corrections or normalization of existing entries—likely adjusting previously added certificate/metadata records—suggesting operational tuning to keep registry data accurate. Overall, the work reflects a data-maintenance phase focused on completeness and correctness of trust/configuration records across environments, which is typical for a registry repository’s maturity progression.
 
-**+2,610** added · **-1,300** deleted · **+1,310** net change
-
-**Key Accomplishments**
-
-- Implemented resumable end-to-end recovery checkpoints
-- Introduced a read-only install mode for the private-state CLI
-- Expanded automated coverage for read-only install behavior
-- Added raw RPC history output to support channel recovery
-- Simplified and deduplicated recovery logic and helpers
-- Improved wallet key and note synchronization behaviors
-- Reorganized and tightened public documentation and readiness materials
-
-**Code Analysis**
-
-The net +1,310 lines reflects substantial feature and test additions around private-state CLI operations, particularly install/recovery modes and end-to-end validation. Significant additions include resumable e2e checkpoints and expanded e2e coverage for read-only install flows (Add resumable private-state CLI e2e checkpoints; Add read-only install coverage to private-state CLI e2e), and new raw RPC history output and verification used for recovery and catch-up workflows (Add raw RPC history output for channel recovery; Verify raw RPC history accumulation).
-
-The -1,300 lines deleted indicates active refactoring and cleanup rather than purely additive development. Multiple commits explicitly reduce duplication and simplify logic—e.g., streamlining recovery code paths and consolidating helpers for wallet recovery and raw history processing (Simplify private-state CLI recovery logic; Reduce private-state CLI helper duplication; Deduplicate wallet recovery helpers; Trim raw RPC history helpers). This combination—feature expansion paired with consolidation—suggests the repository is iterating toward more maintainable operational tooling, with testing and documentation being treated as first-class deliverables alongside implementation (Reorganize public documentation tree; Add public observer help and audit docs).
-
-**Next Steps**
-
-Continue hardening private-state CLI recovery and read-only operational workflows by extending e2e scenarios and refining recovery/data-export behavior based on the newly introduced raw RPC history and resumable checkpoint mechanisms. Further documentation consolidation and clarity improvements are also a logical continuation given the number of doc-focused commits in this period.
-
-### gunz-mac  ·  [GitHub](https://github.com/tokamak-network/gunz-mac)
-
-gunz-mac appears to be a web-focused repository used to design and implement user-facing pages for Tokamak Network initiatives, specifically the “Play to Glory” (/p2g) experience and an associated “studio” page. During this period, work concentrated on expanding page structure and visual design, which directly affects how users discover, understand, and navigate the Play to Glory ecosystem content.
-
-**+2,131** added · **-367** deleted · **+1,764** net change
-
-**Key Accomplishments**
-
-- Added a Studio page and refreshed ecosystem styling
-- Scaffolded the /p2g Play to Glory wireframe
-- Applied a defined dark-theme specification to /p2g
-- Redesigned and enhanced /p2g Section 4 with interactive behavior
-
-**Code Analysis**
-
-The net increase of +1,764 lines reflects substantial front-end buildout centered on new pages and a first-pass implementation of the /p2g experience. The largest additions correspond to creating the /p2g wireframe (+541) and adding the studio page plus broader ecosystem restyling (+1,158), indicating meaningful expansion of page structure, layout code, and supporting UI components.
-
-The -367 lines deleted align with iterative design changes rather than feature removal. The /p2g styling update to match the “xAI dark spec” included both additions and deletions (+229/-144), consistent with replacing or consolidating existing style rules. Similarly, the redesign of /p2g Section 4 into a roots-tree layout (+100/-80) suggests a structural refactor where prior layout or component approaches were removed in favor of a new representation. Overall, this pattern indicates active iteration toward a clearer information architecture and more cohesive presentation, with refactoring used to keep the implementation aligned with evolving design decisions.
-
-**Next Steps**
-
-Continue iterating on the /p2g build by extending beyond wireframes into more complete section implementations and polishing interactive behaviors introduced in Section 4. Further consolidation of styling and layout may follow as the studio page and /p2g ecosystem presentation mature into a consistent, maintainable UI.
-
-### thanos-bridge  ·  [GitHub](https://github.com/tokamak-network/thanos-bridge)
-
-thanos-bridge appears to be a bridging-related codebase within the Tokamak Network ecosystem, with activity indicating it consumes the thanos-sdk and includes deployment/build configuration used to run the project in a hosted environment. As a component that depends on SDK behavior and network configuration, its correctness and maintainability matter for users relying on consistent network connectivity and for stakeholders tracking operational stability and upgrade cadence.
-
-**+1,278** added · **-1,211** deleted · **+67** net change
-
-**Key Accomplishments**
-
-- Upgraded the core SDK dependency
-- Hardened network configuration handling
-- Introduced build-time control for hosted deployments
-- Improved repository hygiene for environment handling
-
-**Code Analysis**
-
-The net change of +67 lines alongside large additions and deletions (+1,278 / -1,211) indicates the work was dominated by replacement-style changes rather than incremental feature growth. The main driver is the dependency bump to thanos-sdk (chore(deps): bump thanos-sdk to 0.0.14-dev.998567b), which commonly results in lockfile updates and associated regeneration that appears as substantial churn with limited net growth. Smaller, targeted edits added operational capability (the Vercel build toggle via vercel.json) and improved correctness in a specific configuration edge case (omitting blockExplorers when L2 URL is empty). Overall, this mix suggests a period focused on maintainability and operational reliability—keeping dependencies current, reducing configuration-related errors, and tightening deployment controls—rather than expanding user-facing functionality.
-
-**Next Steps**
-
-Continue validating compatibility with the updated thanos-sdk version across environments, and extend configuration validation to further reduce the likelihood of runtime issues caused by incomplete or inconsistent network settings.
-
-### zk-X509  ·  [GitHub](https://github.com/tokamak-network/zk-X509)
-
-zk-X509 is a Tokamak Network repository centered on the supporting tooling and application workflow needed to run and interact with a zk-X509 stack, with emphasis on local environment setup and frontend/desktop user experience. This matters for users and internal teams because smoother setup and clearer UX safeguards reduce onboarding friction and operational errors when running components that depend on services like Docker and local backends.
-
-**+953** added · **-685** deleted · **+268** net change
-
-**Key Accomplishments**
-
-- Automated local environment orchestration
-- Hardened onboarding flow when Docker is a prerequisite
-- Improved guidance visibility for unverified states
-- Incorporated automated review feedback and reduced churn
-
-**Code Analysis**
-
-The +953 lines added largely reflect functional expansions to operational tooling and user-facing safeguards—most notably the significant enhancement to run-local.sh for environment synchronization, backend auto-start, and registry seeding (commit: fix(local-env)..., +751/-3), along with frontend UX checks and conditional UI behavior (commit: feat(ux)..., +99/-6). The -685 lines deleted are primarily driven by a dedicated review/cleanup pass responding to Copilot and Gemini feedback on the local environment work (commit: review(local-env)..., +37/-664), suggesting code consolidation, removal of redundant logic, and improved maintainability. Overall, the net change of +268 indicates meaningful capability additions while also investing in code quality and reducing unnecessary complexity before changes were finalized.
-
-**Next Steps**
-
-Next work is expected to continue tightening the local environment workflow and validating the new UX dependency checks across common developer/user setups, focusing on stability and reducing setup-related failures. Additional incremental review-driven refinements to desktop/frontend behavior would be a natural continuation of this period’s emphasis on feedback incorporation.
-
-### zk-x509-ca-registry  ·  [GitHub](https://github.com/tokamak-network/zk-x509-ca-registry)
-
-zk-x509-ca-registry serves as a registry for zk-X.509-related Certificate Authority (CA) certificates and associated service metadata used by Tokamak Network components. By maintaining an up-to-date set of CA certs and registrations, it supports consistent verification and configuration for services that rely on these trust anchors. This matters to users and stakeholders because registry accuracy directly affects whether services can be recognized and validated as intended across environments.
-
-**+741** added · **-12** deleted · **+729** net change
-
-**Key Accomplishments**
-
-- Registered service entries with updated CA certs and metadata
-- Added and maintained registrations for multiple zkScatter service variants
-- Introduced a CA addition action for a zkScatter users entry
-- Performed small corrective edits to existing registry content
-
-**Code Analysis**
-
-The +741/-12 net change is dominated by repeated “Add/update CA certs + service metadata” updates (each ~+81 lines across many commits), which indicates the period’s work primarily consisted of appending or expanding structured registry content rather than refactoring existing logic. The presence of targeted, low-churn edits (+7/-7 in #31 and +5/-5 in #27) suggests incremental corrections or formatting/consistency adjustments to registry entries alongside the larger additions. Overall, the change profile indicates a data-centric repository where maturity is expressed through completeness and accuracy of registered CA certs and metadata, with minimal code removal and limited restructuring during this period.
-
-**Next Steps**
-
-Continue registering and updating CA certificates and service metadata as additional services are onboarded or existing entries require rotation/updates. Maintain consistency in naming and registration records for the 31337 environment to reduce integration friction and operational overhead.
-
-### trh-backend  ·  [GitHub](https://github.com/tokamak-network/trh-backend)
-
-trh-backend provides backend infrastructure used to deploy and manage Tokamak Rollup Hub environments, including deployment metadata and integration points relied on by operational tooling and user-facing surfaces. This repository matters because reliable deployment configuration (e.g., block explorer links and bridge settings) directly affects usability, support burden, and the operational consistency of rollup deployments.
-
-**+457** added · **-70** deleted · **+387** net change
-
-**Key Accomplishments**
-
-- Added a POST endpoint to synchronize block explorer URLs for existing deployments
-- Extended the sync endpoint to accept an optional explorer URL in the request body
-- Improved AWS deployment behavior with block explorer URL updates and fallbacks
-- Hardened configuration and metadata handling for downstream integrations
-
-**Code Analysis**
-
-The net change of +387 lines reflects primarily additive work that introduces new backend capability and deployment robustness around block explorer URL management. The largest additions are aligned with implementing and expanding an API endpoint for syncing explorer URLs (+107 and +41 lines across the two bridge commits) and strengthening deployment flows in AWS with both explicit updates and fallback behavior (+76 and +10 lines in deployment-related commits).  
-The -70 lines deleted appears to be targeted cleanup and simplification associated with configuration handling—most notably in the CrossTrade dApp config adjustment (which includes both additions and deletions) and in making coinmarketcapKey and walletConnectId optional (net negative change), indicating incremental hardening rather than large-scale refactoring. Overall, the change set suggests a repository maturing through operational reliability improvements: fewer brittle configuration requirements and more deliberate synchronization of deployment metadata that downstream tools and users depend on.
-
-**Next Steps**
-
-Follow-on work would typically include validating the new sync-block-explorer endpoint across all supported deployment types and ensuring AWS deployment pipelines consistently populate and persist the correct explorer URL and stack metadata. Additional incremental hardening is likely around configuration defaults and edge cases surfaced by production deployments.
-
-### trh-platform-ui  ·  [GitHub](https://github.com/tokamak-network/trh-platform-ui)
-
-trh-platform-ui is a web-based dashboard used to manage and monitor deployed L2 rollup instances within the Tokamak Network ecosystem. It provides stakeholders and operators with a central interface for tracking deployment status and reviewing deployment history, which supports operational oversight. For users and investors, improvements in this UI directly affect the reliability and clarity of deployment monitoring and reduce friction in day-to-day rollup operations.
-
-**+347** added · **-81** deleted · **+266** net change
-
-**Key Accomplishments**
-
-- Refactored Deployment History Integration into a per-card layout
-- Resolved deployment progress card bugs and usability issues
-
-**Code Analysis**
-
-The net change of +266 lines reflects a period dominated by UI restructuring and targeted fixes rather than broad feature expansion. The largest portion of new code (+249/-16) corresponds to decomposing the Deployment History Integration group into a per-card layout, which typically requires introducing additional UI components and related layout logic to support clearer separation of information. The second change (+98/-65) focused on correcting bugs and UX issues in the deployment progress card; the comparatively higher deletions in this commit suggest replacement or simplification of problematic logic and cleanup of UI behavior rather than merely adding conditional patches. Overall, the mix of added code for structured layout and deleted code tied to bug/UX remediation indicates iterative maturation of the dashboard’s operational views, prioritizing maintainability and correctness in deployment monitoring surfaces.
-
-**Next Steps**
-
-Continue iterating on deployment monitoring and history views by addressing additional UX issues and edge cases as they are identified. Further refinements to card-level components are likely to follow as the per-card layout is exercised in real operational workflows.
-
-### trh-sdk  ·  [GitHub](https://github.com/tokamak-network/trh-sdk)
-
-trh-sdk is a developer SDK intended to simplify deployment of custom Layer 2 rollups on Tokamak Rollup Hub with minimal configuration. It matters to the Tokamak ecosystem because it reduces operational overhead in rollup setup—particularly around deployment and environment configuration—improving reliability and consistency for teams standing up rollup infrastructure.
-
-**+216** added · **-45** deleted · **+171** net change
-
-**Key Accomplishments**
-
-- Removed an operational gating condition for block explorer information
-- Propagated per-fee-token exchange rate configuration into AWS deployment for Blockscout
-- Expanded bridge/explorer configurability via environment variables
-
-**Code Analysis**
-
-The net +171 lines reflect incremental feature additions and configuration-path adjustments rather than large-scale restructuring. New capability was added primarily around environment and deployment configuration for explorer/bridge integration, including introducing UpdateBridgeBlockExplorer and L2BlockExplorer (commit: feat(bridge): add UpdateBridgeBlockExplorer and L2BlockExplorer env var) and ensuring per-fee-token exchange rate settings are propagated through the AWS deploy workflow for Blockscout (commit: feat(blockscout): propagate per-fee-token exchange rate config to AWS deploy). The -45 lines deleted indicate targeted cleanup and simplification, most notably removing the pod-readiness requirement that previously gated block-explorer URL display (commit: fix(show-information): remove pod-readiness requirement for block-explorer URL), suggesting an emphasis on improving operability and reducing avoidable friction in deployment and information discovery.
-
-**Next Steps**
-
-Continue tightening configuration consistency across deployment targets by extending the same block explorer and fee-token-related settings propagation to any remaining deployment paths not covered in this period. Further refinement of operator-facing “show-information” outputs would help ensure critical endpoints and settings are accessible with minimal prerequisites.
-
-### crossTrade  ·  [GitHub](https://github.com/tokamak-network/crossTrade)
-
-crossTrade is a Tokamak Network repository whose recent activity indicates an emphasis on build and CI/CD operational reliability for the project. During this period, work centered on ensuring the repository’s automated workflows run consistently across architectures and remain compatible with evolving GitHub Actions runtime requirements. For users and investors, dependable CI reduces delivery risk by catching issues earlier and preventing infrastructure-driven delays.
-
-**+67** added · **-14** deleted · **+53** net change
-
-**Key Accomplishments**
-
-- Replaced QEMU-based ARM emulation with a native ARM64 runner
-- Upgraded GitHub Actions dependencies for runtime compatibility
-
-**Code Analysis**
-
-The net change of +53 lines primarily reflects updates to CI configuration rather than application logic. The larger addition/removal (+61/-8) corresponds to replacing QEMU emulation with a native ARM64 runner, which typically requires adjusting workflow definitions and runner setup to avoid long-running jobs and timeouts. The remaining change (+6/-6) indicates a controlled maintenance update—upgrading GitHub Actions versions with minimal structural change—suggesting a focus on keeping the automation layer current without introducing unnecessary complexity. Overall, these changes point to a maturity step in operational tooling: reducing CI fragility and proactively maintaining compatibility with upstream platform shifts.
-
-**Next Steps**
-
-Continue monitoring CI execution time and reliability on native ARM64 runners to confirm the timeout issue remains resolved. Maintain periodic GitHub Actions dependency updates to stay aligned with future runtime deprecations and platform requirements.
-
-### tokamak-infra  ·  [GitHub](https://github.com/tokamak-network/tokamak-infra)
-
-tokamak-infra appears to serve as an infrastructure-oriented repository within the Tokamak Network ecosystem, housing configuration and operational artifacts that support internal development and deployment workflows. For users and investors, the security posture and operational hygiene of infrastructure repositories matter because they reduce the risk of accidental exposure of sensitive materials and improve reliability of day-to-day engineering operations.
-
-**+23** added · **-0** deleted · **+23** net change
-
-**Key Accomplishments**
-
-- Hardened repository security controls
-- Standardized source control hygiene
-
-**Code Analysis**
-
-The net change of +23 lines reflects a focused update consistent with adding or expanding a .gitignore file and related security-oriented tracking adjustments (“security: untrack sensitive files and add .gitignore”). No lines were deleted, indicating the work was additive rather than refactoring existing code; the main capability added is preventive control—codified rules that help keep sensitive or non-repository artifacts out of version control. This type of change is characteristic of baseline governance and security tightening, suggesting attention to repository maturity in terms of operational safeguards rather than feature development.
-
-**Next Steps**
-
-Continue auditing repository contents and Git history to confirm sensitive materials are fully removed from tracking and cannot be reintroduced unintentionally. Consider expanding documented contribution and security guidelines to align future infrastructure changes with consistent handling of secrets and environment-specific files.
-
-### tokamak-thanos-stack  ·  [GitHub](https://github.com/tokamak-network/tokamak-thanos-stack)
-
-tokamak-thanos-stack provides full-stack tooling and operational infrastructure for running Thanos-based rollup chains in the Tokamak ecosystem. It matters because operational stacks determine how reliably chain services run and how accurately ecosystem applications (such as explorers) present on-chain data and costs. For stakeholders, improvements here are directly tied to operational clarity, configurability, and reduced friction for chain operators and end users interacting with rollups.
-
-**+10** added · **-4** deleted · **+6** net change
-
-**Key Accomplishments**
-
-- Added per-fee-token exchange rate configuration with stablecoin disable support
-- Set CoinGecko as the default exchange rate source
-
-**Code Analysis**
-
-The net change of +6 lines (+10/-4) indicates a small, targeted configuration adjustment rather than broad refactoring. The added lines correspond to extending Blockscout configuration to support per-fee-token exchange rate settings and a stablecoin disable option (feat commit), while the deletions likely reflect replacing or removing prior defaults/settings in order to make CoinGecko the default exchange rate source (fix commit). The limited scope suggests the repository is in a phase of incremental operational hardening—making defaults more predictable and configuration more expressive without introducing large, riskier changes.
-
-**Next Steps**
-
-Next steps should continue tightening operational defaults and expanding configuration coverage for Blockscout in Thanos rollup deployments, building on the newly added exchange-rate configurability and standardized default source behavior.
-
-### tokamak-rally  ·  [GitHub](https://github.com/tokamak-network/tokamak-rally)
-
-tokamak-rally is a Tokamak Network repository that appears to support an operational or application component referred to in the codebase as the “arrow system,” based on the most recent change history. Its primary relevance in this period is in improving diagnosability, which helps teams detect and investigate runtime issues with less disruption. For users and investors, incremental observability improvements reduce operational risk and improve reliability without requiring large feature changes.
-
-**+8** added · **-1** deleted · **+7** net change
-
-**Key Accomplishments**
-
-- Added diagnostic logging for the arrow system
-- Performed a small cleanup alongside the logging change
-
-**Code Analysis**
-
-The net change of +7 lines reflects a small, targeted modification consistent with adding diagnostic logging rather than introducing new product functionality. Specifically, the added lines likely represent new log statements and/or supporting context to capture arrow system state during execution (“add arrow system diagnostic logging”). The -1 line deletion suggests a minor adjustment or cleanup made during the same change, helping avoid unnecessary or redundant code as diagnostics were introduced. Overall, this pattern indicates a maintenance-oriented update aimed at improving operational maturity through better observability.
-
-**Next Steps**
-
-No forward-looking PRs or additional commit messages were provided for this period. Given the focus on diagnostics, the next logical steps are continued observability improvements (e.g., expanding diagnostic coverage to adjacent components and validating that new logs are actionable in operational workflows).
+## Next Steps
+Continue registering and updating CA certificates and service metadata as additional services, environments, or on-chain addresses are introduced or rotated. Follow-on work should prioritize consistency checks across similarly named entries (e.g., zkScatter users/relayers variants) to minimize ambiguity in downstream lookups.
